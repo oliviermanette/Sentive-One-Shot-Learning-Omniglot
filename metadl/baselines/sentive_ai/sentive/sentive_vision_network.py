@@ -1,6 +1,7 @@
 import copy
 
 import matplotlib.pyplot as plt
+from IPython.display import display, clear_output
 import numpy as np
 from sklearn.decomposition import PCA
 
@@ -90,7 +91,7 @@ class sentive_vision_network(object):
                     self.nrn_tls.lst_nrns[nb].neuron["meta"]["center"]["y"] = y
                     self.nrn_tls.lst_nrns[nb].neuron["meta"]["matrix_width"] = 1
                     
-                    self.nrn_pxl_map[y][x] = nb
+                    self.nrn_pxl_map[y][x] = self.nrn_tls.lst_nrns[nb].neuron["_id"]
 
                     pxl_coord.append([x,y])
         
@@ -100,7 +101,7 @@ class sentive_vision_network(object):
         pca = PCA(n_components=2)
         pca.fit(pxl_coord)
         # on obtient les résultats ici:
-        print(pca.components_)
+        # print(pca.components_)
         # permet d'avoir l'orientation globale du caractère
         self.glbl_prm["u_axis"]["x"]=pca.components_[0][0]
         self.glbl_prm["u_axis"]["y"]=pca.components_[0][1]
@@ -111,8 +112,7 @@ class sentive_vision_network(object):
         self.np_coord = np.array(pxl_coord)
         self.glbl_prm["cg"]["x"] = np.mean(self.np_coord[:,0])
         self.glbl_prm["cg"]["y"] = np.mean(self.np_coord[:,1])
-
-        print(self.glbl_prm)
+        # print(self.glbl_prm)
 
     
     def layer_2(self):
@@ -134,7 +134,7 @@ class sentive_vision_network(object):
             y = self.nrn_tls.lst_nrns[neuron_idx].neuron["meta"]["center"]["y"]
 
             # sub_pxl_map contient les identifiants de chaque neurone pixel sur une carte nrnl_map
-            sub_pxl_map = self.nrn_pxl_map[y-1:y+2, x-1:x+2]
+            sub_pxl_map = self.nrn_pxl_map[y-2:y+1, x-2:x+1]
 
             # crée un nouveau neurone de taille 3
             nb  = self.nrn_tls.add_new_nrn()
@@ -142,9 +142,12 @@ class sentive_vision_network(object):
                 nb_min = nb
             lst_nrn2_pos.append(nb)
             nrn2 = self.nrn_tls.lst_nrns[nb].neuron
+            if nrn2["_id"] == 61:
+                print("sub_pxl_map")
             nrn2["meta"]["center"]["x"] = x
             nrn2["meta"]["center"]["y"] = y
             nrn2["meta"]["matrix_width"] = 3
+            nrn2["meta"]["sub_pxl_map"] = sub_pxl_map
             nrn2["DbConnectivity"]["pre_synaptique"] = list(set(sub_pxl_map.ravel()))
             nrn2["meta"]["pxl_coord"] = []
             nrn2["meta"]["glbl_prm"] = {
@@ -172,7 +175,7 @@ class sentive_vision_network(object):
                     pca = PCA(n_components=1)
                     pca.fit(nrn2["meta"]["pxl_coord"])
                     # on obtient les résultats ici:
-                    print(pca.components_)
+                    # print(pca.components_)
                     # permet d'avoir l'orientation globale du caractère
                     nrn2["meta"]["glbl_prm"]["u_axis"]["x"]=pca.components_[0][0]
                     nrn2["meta"]["glbl_prm"]["u_axis"]["y"]=pca.components_[0][1]
@@ -624,7 +627,6 @@ class sentive_vision_network(object):
         nrn4["meta"]["angle"] = self.nrn_tls.calc_angle(v1,v2)
         nrn4["meta"]["before_length"] = self.nrn_tls.calc_dist(nrn2_1["meta"]["center"], nrn2_2["meta"]["center"])
         nrn4["meta"]["after_length"] = self.nrn_tls.calc_dist(nrn2_3["meta"]["center"], nrn2_2["meta"]["center"])
-
     
 
     def run_layers(self):
@@ -667,9 +669,9 @@ class sentive_vision_network(object):
 
     def show_receptive_field_id(self, neuron_idx2):
         # Visualiser le champs récepteur du neurone
-
+        # plt.matshow(np.zeros(np.shape(self.episode[:,:,0])))
         sub_matrix = self.nrn_tls.get_neuron_receptive_field(neuron_idx2, self.episode[:,:,0])
-        # print(current_neuron)
+        # print(sub_matrix)
         plt.matshow(sub_matrix)
 
 

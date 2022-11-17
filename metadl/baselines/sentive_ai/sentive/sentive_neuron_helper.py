@@ -228,6 +228,8 @@ class sentive_neuron_helper():
         Returns:
             [matrice]: [matrice contenant la position du champs récepteur du neurone nrn_id]
         """
+        tmp_vision = copy.deepcopy(current_vision)
+
 
         if neurons_pool==-1:
             neurons_pool = self.lst_nrns
@@ -247,12 +249,12 @@ class sentive_neuron_helper():
         for sensor_id in lst_nrn:
             neuron = self.get_neuron_from_id(sensor_id, neurons_pool)
             if neuron !="":
-                current_vision[int(neuron["meta"]["center"]["y"]),int(neuron["meta"]["center"]["x"])] = 5
+                tmp_vision[int(neuron["meta"]["center"]["y"]),int(neuron["meta"]["center"]["x"])] = 5
                 nb +=1
         if verbose:
             print(nb, "pixels")
             print(crnt_nrn)
-        return current_vision
+        return tmp_vision
     
     
     def update_coord(self, previous):
