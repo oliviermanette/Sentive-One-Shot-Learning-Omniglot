@@ -24,8 +24,8 @@ class sentive_brain():
 
         self.nnet[0].layer_1()
         self.nnet[0].layer_2()
-        self.nnet[0].layer_3()
-        self.nnet[0].layer_3_bis()
+        # self.nnet[0].layer_3()
+        # self.nnet[0].layer_3_bis()
         '''
 
         for lnet in range(nb_char):

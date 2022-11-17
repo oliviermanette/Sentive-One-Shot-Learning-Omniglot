@@ -96,7 +96,6 @@ class sentive_vision_network(object):
         
         self.nb_nrn_pxls = copy.deepcopy(self.nrn_tls.nb_nrns)
         print("nombre de neurones taille 1:",self.nb_nrn_pxls)
-        # print("*"*40,"\n")
 
         pca = PCA(n_components=2)
         pca.fit(pxl_coord)
@@ -142,20 +141,47 @@ class sentive_vision_network(object):
             if nb_min == 0:
                 nb_min = nb
             lst_nrn2_pos.append(nb)
-            self.nrn_tls.lst_nrns[nb].neuron["meta"]["center"]["x"] = x
-            self.nrn_tls.lst_nrns[nb].neuron["meta"]["center"]["y"] = y
-            self.nrn_tls.lst_nrns[nb].neuron["meta"]["matrix_width"] = 3
-            self.nrn_tls.lst_nrns[nb].neuron["DbConnectivity"]["pre_synaptique"] = list(set(sub_pxl_map.ravel()))
+            nrn2 = self.nrn_tls.lst_nrns[nb].neuron
+            nrn2["meta"]["center"]["x"] = x
+            nrn2["meta"]["center"]["y"] = y
+            nrn2["meta"]["matrix_width"] = 3
+            nrn2["DbConnectivity"]["pre_synaptique"] = list(set(sub_pxl_map.ravel()))
+            nrn2["meta"]["pxl_coord"] = []
+            nrn2["meta"]["glbl_prm"] = {
+                                            "cg":{"x":0,"y":0},
+                                            "u_axis":{"x":0,"y":0}
+                                        }
 
-            self.nrn_l2_map[y][x] = self.nrn_tls.lst_nrns[nb].neuron["_id"]
+            self.nrn_l2_map[y][x] = nrn2["_id"]
 
-            for i in range(len(self.nrn_tls.lst_nrns[nb].neuron["DbConnectivity"]["pre_synaptique"])-1,-1,-1):
-                if self.nrn_tls.lst_nrns[nb].neuron["DbConnectivity"]["pre_synaptique"][i]==0:
-                    self.nrn_tls.lst_nrns[nb].neuron["DbConnectivity"]["pre_synaptique"].pop(i)
+            for i in range(len(nrn2["DbConnectivity"]["pre_synaptique"])-1,-1,-1):
+                if nrn2["DbConnectivity"]["pre_synaptique"][i]==0:
+                    nrn2["DbConnectivity"]["pre_synaptique"].pop(i)
                 else:
-                    self.nrn_tls.netGraph.add_edge(self.nrn_tls.lst_nrns[nb].neuron["_id"],self.nrn_tls.lst_nrns[nb].neuron["DbConnectivity"]["pre_synaptique"][i])
-                    nrn_pxl = self.nrn_tls.get_neuron_from_id(self.nrn_tls.lst_nrns[nb].neuron["DbConnectivity"]["pre_synaptique"][i])
-                    nrn_pxl["DbConnectivity"]["post_synaptique"].append(self.nrn_tls.lst_nrns[nb].neuron["_id"])
+                    
+                    self.nrn_tls.netGraph.add_edge(nrn2["_id"],nrn2["DbConnectivity"]["pre_synaptique"][i])
+                    nrn_pxl = self.nrn_tls.get_neuron_from_id(nrn2["DbConnectivity"]["pre_synaptique"][i])
+                    nrn_pxl["DbConnectivity"]["post_synaptique"].append(nrn2["_id"])
+
+                    # ici tu dois récupérer les coordonnées du neurones présynaptique -> nrn_pxl["meta"]["center"]["x"]
+                    x = nrn_pxl["meta"]["center"]["x"]
+                    y = nrn_pxl["meta"]["center"]["y"]
+                    nrn2["meta"]["pxl_coord"].append([x,y])
+
+                    # calcul du PCA permettant d'obtenir l'orientation globale des pixels
+                    pca = PCA(n_components=1)
+                    pca.fit(nrn2["meta"]["pxl_coord"])
+                    # on obtient les résultats ici:
+                    print(pca.components_)
+                    # permet d'avoir l'orientation globale du caractère
+                    nrn2["meta"]["glbl_prm"]["u_axis"]["x"]=pca.components_[0][0]
+                    nrn2["meta"]["glbl_prm"]["u_axis"]["y"]=pca.components_[0][1]
+
+                    # calcule le centre de gravité des pixels
+                    self.np_coord = np.array(nrn2["meta"]["pxl_coord"])
+                    nrn2["meta"]["glbl_prm"]["cg"]["x"] = np.mean(self.np_coord[:,0])
+                    nrn2["meta"]["glbl_prm"]["cg"]["y"] = np.mean(self.np_coord[:,1])
+                    
 
             # print("neurone",nb,"list pre_synaptique")
             # print(self.nrn_tls.lst_nrns[nb].neuron["DbConnectivity"]["pre_synaptique"])
