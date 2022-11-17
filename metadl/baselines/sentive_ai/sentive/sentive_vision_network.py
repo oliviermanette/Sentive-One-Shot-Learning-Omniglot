@@ -134,7 +134,7 @@ class sentive_vision_network(object):
             y = self.nrn_tls.lst_nrns[neuron_idx].neuron["meta"]["center"]["y"]
 
             # sub_pxl_map contient les identifiants de chaque neurone pixel sur une carte nrnl_map
-            sub_pxl_map = self.nrn_pxl_map[y-2:y+1, x-2:x+1]
+            sub_pxl_map = self.nrn_pxl_map[y-1:y+2, x-1:x+2]
 
             # crée un nouveau neurone de taille 3
             nb  = self.nrn_tls.add_new_nrn()
