@@ -15,19 +15,15 @@ class sentive_brain():
         
             # Dessine les segments détectés: 
             ### self.nnet[i].draw_selected_segment_path()
-
-        
         # J'ai ici tous les binomes qui sont terminés.
         # Je dois les comparer avec les autres caractères.
         # Un boucle pour passer en revu chaque caractère
-        
-
         # self.nnet[0].layer_1()
         # self.nnet[0].layer_2()
         # self.nnet[0].layer_3()
         # self.nnet[0].layer_3_bis()
         
-'''
+        '''
         for lnet in range(nb_char):
             # pour chaque caractère je fais une boucle sur chaque binomes.
             for bin1_id in range(len( self.nnet[lnet].nrn_saccade)): 
@@ -50,8 +46,7 @@ class sentive_brain():
                                 
                     # écrit le max_result dans le mini_score
                     self.nnet[lnet].nrn_saccade[bin1_id]["mini_score"] = max_result
-        
-'''
+        '''
     def predict(self, test_img):
         # print("I was here")
         self.test_net = sentive_vision_network(test_img)

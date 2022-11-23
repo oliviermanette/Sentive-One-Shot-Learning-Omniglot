@@ -236,6 +236,10 @@ class sentive_neuron_helper():
             
         # récupère le neurone visé
         crnt_nrn = self.get_neuron_from_id(nrn_id, neurons_pool)
+
+        if crnt_nrn["layer_id"] == 1:
+            tmp_vision[int(crnt_nrn["meta"]["center"]["y"]),int(crnt_nrn["meta"]["center"]["x"])] = 5
+            return tmp_vision
         # récupère la liste des 
         try:
             lst_nrn = crnt_nrn["meta"]["field_list"]
