@@ -201,13 +201,23 @@ class sentive_vision_network(object):
             nrn2["DbConnectivity"]["lateral_connexion"] = list(set(sub_pxl_map.ravel().astype(int)))
             for i_pos in range(len(nrn2["DbConnectivity"]["lateral_connexion"])-1,-1,-1):
                 if nrn2["DbConnectivity"]["lateral_connexion"][i_pos] == 0 :
-                    nrn2["DbConnectivity"]["lateral_connexion"].pop(0)
+                    nrn2["DbConnectivity"]["lateral_connexion"].pop(i_pos)
                 else:
                     self.nrn_tls.add_edge(nrn2["_id"],nrn2["DbConnectivity"]["lateral_connexion"][i_pos])
                     self.nrn_tls.increment_weight(nrn2,nrn2["DbConnectivity"]["lateral_connexion"][i_pos])
 
             # print("neurone",nrn2["_id"],"list lateral_connexion")
             # print(nrn2["DbConnectivity"]["lateral_connexion"])
+            # Ajouter ici le calcul des angles avec chaque
+            nrn2["DbConnectivity"]["angles"] = {}
+            vector_1 = nrn2["meta"]["glbl_prm"]["u_axis"]
+            for i_pos in range(len(nrn2["DbConnectivity"]["lateral_connexion"])-1,-1,-1):
+                id_nrn = nrn2["DbConnectivity"]["lateral_connexion"][i_pos]
+                if nrn2["_id"] != id_nrn:
+                    nrn_2 = self.nrn_tls.get_neuron_from_id(id_nrn)
+                    vector_2 = nrn_2["meta"]["glbl_prm"]["u_axis"]
+                    nrn2["DbConnectivity"]["angles"][id_nrn] = self.nrn_tls.calc_angle(vector_1, vector_2)
+
 
         self.nrn_tls.nb_2_1st_layers = len(self.nrn_tls.lst_nrns)
         print("nb neurones couche 2 :", nb - nb_min)
@@ -385,6 +395,7 @@ class sentive_vision_network(object):
 
                 nb = self.nrn_tls.add_new_nrn("sentive_sequence_nrn")
                 nrn3 = self.nrn_tls.lst_nrns[nb].neuron
+                self.slct_sgmts.append(nrn3["_id"])
                 nrn3["meta"]["path"] = first_path
                 nrn3["meta"]["mobilise_nrn2_ids"] = nrn_activated
                 nrn3["DbConnectivity"]["pre_synaptique"] = nrn_activated
@@ -632,8 +643,8 @@ class sentive_vision_network(object):
     def run_layers(self):
         self.layer_1() # pixels
         self.layer_2() # triplets
-        self.layer_3() # séquences, segments
-        self.layer_3_bis() # calcul des angles
+        # self.layer_3() # séquences, segments
+        # self.layer_3_bis() # calcul des angles
         # self.layer_4() # binomes -> caractères
 
 
@@ -724,6 +735,7 @@ class sentive_vision_network(object):
     def draw_selected_segment_path(self, ax=-1):
         if ax==-1:
             _, ax = plt.subplots()
+        print("SELECTED SEGMENTS",  self.slct_sgmts)
         for nrn_id in self.slct_sgmts:
             nrn = self.nrn_tls.get_segment_from_id(nrn_id,self.nrn_segments)
             if nrn != '':

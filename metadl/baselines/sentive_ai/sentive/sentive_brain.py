@@ -11,7 +11,7 @@ class sentive_brain():
         for i in range(nb_char):
             # print("\n********* network:",i)
             self.nnet.append(sentive_vision_network(episode[0][i]))
-            ### self.nnet[i].run_layers()
+            self.nnet[i].run_layers()
         
             # Dessine les segments détectés: 
             ### self.nnet[i].draw_selected_segment_path()
@@ -22,12 +22,12 @@ class sentive_brain():
         # Un boucle pour passer en revu chaque caractère
         
 
-        self.nnet[0].layer_1()
-        self.nnet[0].layer_2()
+        # self.nnet[0].layer_1()
+        # self.nnet[0].layer_2()
         # self.nnet[0].layer_3()
         # self.nnet[0].layer_3_bis()
-        '''
-
+        
+'''
         for lnet in range(nb_char):
             # pour chaque caractère je fais une boucle sur chaque binomes.
             for bin1_id in range(len( self.nnet[lnet].nrn_saccade)): 
@@ -50,8 +50,8 @@ class sentive_brain():
                                 
                     # écrit le max_result dans le mini_score
                     self.nnet[lnet].nrn_saccade[bin1_id]["mini_score"] = max_result
-        '''
-
+        
+'''
     def predict(self, test_img):
         # print("I was here")
         self.test_net = sentive_vision_network(test_img)

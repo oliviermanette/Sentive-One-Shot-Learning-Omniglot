@@ -371,13 +371,18 @@ class sentive_neuron_helper():
     def calc_angle(self, vector1, vector2):
         # calcul de l'angle de rotation entre les deux vecteurs passés en paramètres
         np_c_1 = np.array([vector1["x"], vector1["y"]])
+        # print (np_c_1)
         np_c_2 = np.array([vector2["x"], vector2["y"]])
+        # print (np_c_2)
         np_c_3 = np.array([-vector1["y"], vector1["x"]])
         signe = 1
         test = np.sum(np.multiply(np_c_3,np_c_2))
         if test < 0 :
             signe = -1
-        return signe * np.arccos(np.sum(np.multiply(np_c_1,np_c_2))/(np.sqrt(np.sum(np.power(np_c_1,2)))*np.sqrt(np.sum(np.power(np_c_2,2)))))
+        angle =  signe * np.arccos(np.sum(np.multiply(np_c_1,np_c_2))/(np.sqrt(np.sum(np.power(np_c_1,2)))*np.sqrt(np.sum(np.power(np_c_2,2)))))
+        if np.isnan(angle):
+            return signe * np.arccos(np.round(np.sum(np.multiply(np_c_1,np_c_2))/(np.sqrt(np.sum(np.power(np_c_1,2)))*np.sqrt(np.sum(np.power(np_c_2,2))))))
+        return angle
     
     
     def calc_dist(self, point1, point2):
