@@ -161,29 +161,28 @@ class sentive_vision_network(object):
                 if nrn2["DbConnectivity"]["pre_synaptique"][i]==0:
                     nrn2["DbConnectivity"]["pre_synaptique"].pop(i)
                 else:
-                    
                     self.nrn_tls.netGraph.add_edge(nrn2["_id"],nrn2["DbConnectivity"]["pre_synaptique"][i])
                     nrn_pxl = self.nrn_tls.get_neuron_from_id(nrn2["DbConnectivity"]["pre_synaptique"][i])
                     nrn_pxl["DbConnectivity"]["post_synaptique"].append(nrn2["_id"])
 
-                    # ici tu dois récupérer les coordonnées du neurones présynaptique -> nrn_pxl["meta"]["center"]["x"]
+                    # ici tu dois récupérer les coordonnées du neurone présynaptique central -> nrn_pxl["meta"]["center"]["x"]
                     x = nrn_pxl["meta"]["center"]["x"]
                     y = nrn_pxl["meta"]["center"]["y"]
-                    nrn2["meta"]["pxl_coord"].append([x,y])
+                    nrn2["meta"]["pxl_coord"].append((x,y))
 
-                    # calcul du PCA permettant d'obtenir l'orientation globale des pixels
-                    pca = PCA(n_components=1)
-                    pca.fit(nrn2["meta"]["pxl_coord"])
-                    # on obtient les résultats ici:
-                    # print(pca.components_)
-                    # permet d'avoir l'orientation globale du caractère
-                    nrn2["meta"]["glbl_prm"]["u_axis"]["x"]=pca.components_[0][0]
-                    nrn2["meta"]["glbl_prm"]["u_axis"]["y"]=pca.components_[0][1]
+            # calcul du PCA permettant d'obtenir l'orientation globale des pixels
+            pca = PCA(n_components=1)
+            pca.fit(nrn2["meta"]["pxl_coord"])
+            # on obtient les résultats ici:
+            # print(pca.components_)
+            # permet d'avoir l'orientation globale du caractère
+            nrn2["meta"]["glbl_prm"]["u_axis"]["x"]=pca.components_[0][0]
+            nrn2["meta"]["glbl_prm"]["u_axis"]["y"]=pca.components_[0][1]
 
-                    # calcule le centre de gravité des pixels
-                    self.np_coord = np.array(nrn2["meta"]["pxl_coord"])
-                    nrn2["meta"]["glbl_prm"]["cg"]["x"] = np.mean(self.np_coord[:,0])
-                    nrn2["meta"]["glbl_prm"]["cg"]["y"] = np.mean(self.np_coord[:,1])
+            # calcule le centre de gravité des pixels
+            self.np_coord = np.array(nrn2["meta"]["pxl_coord"])
+            nrn2["meta"]["glbl_prm"]["cg"]["x"] = np.mean(self.np_coord[:,0])
+            nrn2["meta"]["glbl_prm"]["cg"]["y"] = np.mean(self.np_coord[:,1])
                     
 
             # print("neurone",nb,"list pre_synaptique")
@@ -223,6 +222,56 @@ class sentive_vision_network(object):
         print("nb neurones couche 2 :", nb - nb_min)
         print("nombre de neurones couche 1 & 2:",self.nrn_tls.nb_2_1st_layers)
         # print("*"*40)
+
+    '''
+    def couche_3(self):
+        remaining_nrn2_id = {}
+        i = 0
+        for nrn in self.nrn_tls.lst_nrns:
+            if nrn.neuron["layer_id"] == 2:
+                nrn2 = nrn.neuron
+                if i==0: 
+                    crnt_nrn = copy.deepcopy(nrn2)
+                else:
+                    remaining_nrn2_id[nrn2["_id"]] = nrn2
+                i += 1
+        nexts_list = {}
+        all_nexts = [list(remaining_nrn2_id)[0]]
+        for crnt_nrn in all_nexts:
+            for nrn_id in crnt_nrn["DbConnectivity"]["angles"].keys():
+                try:
+                    nexts_list[nrn_id] = remaining_nrn2_id[nrn_id]
+                    remaining_nrn2_id.pop(nrn_id)
+                except:
+                    pass
+        print("nexts_list is", nexts_list.keys())
+        branchs = []
+        branchs.append({})
+        crn_nrn = list(nexts_list.values())[0]
+        branchs[0][crn_nrn["_id"]] = crn_nrn
+        crn_brnch_id = 0
+        print("branch is", branchs[0].keys())
+        nexts_list.pop(crn_nrn["_id"])
+        while len(nexts_list)>0:
+            for nrn_id in crn_nrn["DbConnectivity"]["angles"].keys():
+                try:
+                    branchs[crn_brnch_id][nrn_id] = nexts_list[nrn_id]
+                    nexts_list.pop(nrn_id)
+                    print("removed",nrn_id)
+                except:
+                    print("nothing to be done")
+            if len(nexts_list)>0:
+                crn_brnch_id += 1
+                branchs.append({})
+                crn_nrn = list(nexts_list.values())[0]
+                branchs[crn_brnch_id][crn_nrn["_id"]] = crn_nrn
+                nexts_list.pop(crn_nrn["_id"])
+        
+            print("nexts_list is", nexts_list.keys())
+            print("number of branches is", len(branchs))
+            for struc_nrn in branchs:
+                print(struc_nrn.keys())
+    '''
 
 
     def find_tips(self, cp_lst_nrns, lthrshld_tip, lthrshld_nod, G, r_thrshld_tip=-1):
@@ -765,3 +814,50 @@ class sentive_vision_network(object):
                 break
             i+=1
         ax.matshow(np_stamp)
+
+    def show_layer_vectors(self, layer_id, lbl_show_angles=True):
+        X = []
+        Y = []
+        u_x = []
+        u_y = []
+        nb = 0
+        for nrn in self.nrn_tls.lst_nrns:
+            if nrn.neuron["layer_id"] == layer_id:
+                nrn2 = nrn.neuron
+                nb += 1
+                X.append(nrn2["meta"]["glbl_prm"]["cg"]["x"])
+                Y.append(nrn2["meta"]["glbl_prm"]["cg"]["y"])
+                u_x.append(nrn2["meta"]["glbl_prm"]["u_axis"]["x"])
+                u_y.append(nrn2["meta"]["glbl_prm"]["u_axis"]["y"])
+        q = plt.quiver(X,Y,u_x,u_y)
+        for nrn in self.nrn_tls.lst_nrns:
+            if nrn.neuron["layer_id"] == layer_id:
+                nrn2 = nrn.neuron
+                x = nrn2["meta"]["glbl_prm"]["cg"]["x"]
+                y = nrn2["meta"]["glbl_prm"]["cg"]["y"]
+                plt.text(x,y, str(nrn2["_id"]))
+                if not lbl_show_angles:
+                    continue
+                try:
+                    angles = nrn2["DbConnectivity"]['angles']
+                except:
+                    continue
+                for key in angles:
+                    y += 0.5
+                    angle = angles[key]
+                    angle = np.abs(angle)
+                    if angle > (np.pi)/2:
+                        angle = np.pi - angle
+                    if angle ==0:
+                        color = "green"
+                    elif angle < 0.1:
+                        color = "yellow"
+                    elif angle < 0.4:
+                        color = "orange"
+                    elif angle < 0.8:
+                        color = "red"
+                    else :
+                        color = "purple"
+                    plt.text(x,y, str(key),color=color)
+                    
+        print(nb)
