@@ -49,6 +49,10 @@ class sentive_vision_network(object):
 
         # nb est le premier identifiant pour créer les neurones
         self.nb = 0
+
+        # premier identifiant des neurones de la couche 3
+        self.nb_min_nrn3 = 0
+
         # liste contenant tous les neurones : pool_vision
         # self.pool_vision = []
         self.nrn_pxl_map = np.zeros([self.IMG_SIZE,self.IMG_SIZE])
@@ -223,8 +227,17 @@ class sentive_vision_network(object):
         print("nombre de neurones couche 1 & 2:",self.nrn_tls.nb_2_1st_layers)
         # print("*"*40)
 
-    '''
     def couche_3(self):
+        '''
+            Cette couche détermine les angles de rotation du trait en chaque point.
+        '''
+        self.nrn_tls.new_layer()
+        nb  = self.nrn_tls.add_new_nrn()
+        self.nb_min_nrn3 = nb
+        lst_nrn3_pos = [nb]
+        nrn3 = self.nrn_tls.lst_nrns[nb].neuron
+        prevs_nrn3 = [nrn3]
+
         remaining_nrn2_id = {}
         i = 0
         for nrn in self.nrn_tls.lst_nrns:
@@ -235,43 +248,170 @@ class sentive_vision_network(object):
                 else:
                     remaining_nrn2_id[nrn2["_id"]] = nrn2
                 i += 1
-        nexts_list = {}
-        all_nexts = [list(remaining_nrn2_id)[0]]
-        for crnt_nrn in all_nexts:
-            for nrn_id in crnt_nrn["DbConnectivity"]["angles"].keys():
+        nrn3["DbConnectivity"]["pre_synaptique"].append(crnt_nrn["_id"])
+        nrn3["meta"]["glbl_prm"] = crnt_nrn["meta"]["glbl_prm"]
+        max_angle = 0
+
+        # charge la liste des précédents par défaut
+        all_prevs = [[crnt_nrn]]
+
+        crt_branch = 0
+        # Tant qu'il existe des précédent on peut potentiellement continuer
+        while len(all_prevs[crt_branch])>0:
+            nexts_list = {}
+            # calcule les suivant à partir de la liste DbConnectivity.angles
+            # puisque cette liste donne tous les neurones avec qui ce nrn2 est connecté
+            for nrn in all_prevs[crt_branch]:
+                for nrn_id in nrn["DbConnectivity"]["angles"].keys():
+                    try:
+                        nexts_list[nrn_id] = remaining_nrn2_id[nrn_id]
+                        remaining_nrn2_id.pop(nrn_id)
+                    except:
+                        pass
+            # Donc on obtient une liste de tous les suivants possible à partir des neurones contenus dans all_prevs
+            # si cette liste est vide alors on arrête
+            if len(nexts_list)==0:
+                print("nothing more to do")
+                break
+            # Variables permettant de stocker les différentes branches
+            branchs = []
+            branchs.append({})
+            # on sélectionne le 1er neurone de la liste des suivants, il devient le *neurone en court* `crn_nrn`
+            crn_nrn = list(nexts_list.values())[0]
+            # je charge ce neurone en court comme premier de ma première branche
+            branchs[0][crn_nrn["_id"]] = crn_nrn
+            prev_id = crn_nrn["_id"]
+
+            # variable qui stocke quelle branche on se trouve. C'est simplement un chiffre entier de 0 à n
+            crn_brnch_id = 0
+            
+            # Comme on a chargé le prochain neurone, il faut le supprimer de la liste des suivant pour les prochaines fois
+            nexts_list.pop(crn_nrn["_id"])
+            # On boucle sur chaque suivants de la liste
+            while len(nexts_list)>0:
+                # On met dans la même branche tous les neurones connectés entre eux
+                for nrn_id in crn_nrn["DbConnectivity"]["angles"].keys():
+                    try:
+                        # ici avant d'ajouter mon neurone à la branche je vérifie son angle
+
+                        tmp_angle = np.abs(nexts_list[nrn_id]["DbConnectivity"]["angles"][prev_id])
+                        if tmp_angle > np.pi/2:
+                            tmp_angle = np.pi - tmp_angle
+                        if tmp_angle>= 1:
+                            print("**************************************************")
+                            print("angle avec le neurone déjà présent dans la branche",prev_id,"et actuel id:",nrn_id)
+                            print("angle brut = ", nexts_list[nrn_id]["DbConnectivity"]["angles"][prev_id])
+                            print("angle ajusté = ",tmp_angle)
+                            print("**************************************************")
+                            #continue
+                        else:
+                            branchs[crn_brnch_id][nrn_id] = nexts_list[nrn_id]
+                            nexts_list.pop(nrn_id)
+                    except:
+                        #print("nothing to be done")
+                        pass
+                # Si à la fin du premier passage il reste des neurones
+                # ça veut dire que ces neurones ne sont pas connectés avec les autres d'avant
+                # on crée donc une seconde branche pour eux
+                if len(nexts_list)>0:
+                    crn_brnch_id += 1
+                    branchs.append({})
+                    crn_nrn = list(nexts_list.values())[0]
+                    prev_id = crn_nrn["_id"]
+                    branchs[crn_brnch_id][crn_nrn["_id"]] = crn_nrn
+                    nexts_list.pop(crn_nrn["_id"])
+
+                # et ainsi de suite tant qu'il ne reste plus de neurones dans la liste des suivants.
+                # on aura créé une variable **branchs** qui contient des neurones de la 2 eme couche organisés en différentes branches.
+
+            # Cette variable va stocker tous les neurones de la 3eme couche créés maintenant
+            # cela va permettre de savoir qui sont les neurones 3 du niveau précédent quand on sera au niveau suivant
+            # pour l'instant c'est juste un tableau qui permet de stocker ces neurones créés juste après
+            new_prevs_nrn3 = []
+            
+            # réinitialise les branchs
+            all_prevs=[]
+            all_prev_nrn2s = []
+            # print("number of branches is", len(branchs))
+            for i in range(len(branchs)):
+                all_prevs.append([])
+                all_prev_nrn2s.append([])                   
+
+            # boucle sur chaque branche il y trouve une structure qui contient tous les neurones 2 de la branche
+            for strc_nrn2 in branchs:
+                # Création d'un nouveau neurone 3 qui va être connecté à tous les neurones de la branche
+                nb  = self.nrn_tls.add_new_nrn()
+                lst_nrn3_pos.append(nb)
+                nrn3 = self.nrn_tls.lst_nrns[nb].neuron
+                nrn3["DbConnectivity"]["pre_synaptique"].extend(list(strc_nrn2.keys()))
+
+                pxl_coords = set()
+                # Pour chaque nrn 2 j'update la matrice des pixels
+                for nrn2 in strc_nrn2.values():
+                    pxl_coords.update(set(nrn2["meta"]["pxl_coord"]))
+                    all_prev_nrn2s[crt_branch].append(nrn2["_id"])
+
+                # ce qui me permet de calculer le vecteur directeur
+                nrn3["meta"]["pxl_coord"] = list(pxl_coords)
+                pca = PCA(n_components=1)
+                pca.fit(nrn3["meta"]["pxl_coord"])
+
+                nrn3["meta"]["glbl_prm"] = {
+                                                "cg":{  "x":np.mean(np.array(list(pxl_coords))[:,0]),
+                                                        "y":np.mean(np.array(list(pxl_coords))[:,1])},
+                                                "u_axis":{
+                                                        "x":pca.components_[0][0],
+                                                        "y":pca.components_[0][1]}
+                                            }
+                nrn3["meta"]["vecteur_directeur"] = {
+                                                        "x": nrn3["meta"]["glbl_prm"]["cg"]["x"] - prevs_nrn3[0]["meta"]["glbl_prm"]["cg"]["x"],
+                                                        "y": nrn3["meta"]["glbl_prm"]["cg"]["y"] - prevs_nrn3[0]["meta"]["glbl_prm"]["cg"]["y"]
+                                                    }
+                vector_1 = nrn3["meta"]["glbl_prm"]["u_axis"]
+                vector_2 = nrn3["meta"]["vecteur_directeur"]
+                result_angle = np.abs(self.nrn_tls.calc_angle(vector_1, vector_2))
+                if result_angle>(np.pi/2):
+                    nrn3["meta"]["glbl_prm"]["u_axis"]["x"] = - nrn3["meta"]["glbl_prm"]["u_axis"]["x"]
+                    nrn3["meta"]["glbl_prm"]["u_axis"]["y"] = - nrn3["meta"]["glbl_prm"]["u_axis"]["y"]
+
+                # Check if the previous nrn3 has a vector in the right direction
+
+                if not "vecteur_directeur" in prevs_nrn3[0]["meta"]:
+                    vector_1 = prevs_nrn3[0]["meta"]["glbl_prm"]["u_axis"]
+                    result_angle = np.abs(self.nrn_tls.calc_angle(vector_1, vector_2))
+                    if result_angle>(np.pi/2):
+                        prevs_nrn3[0]["meta"]["glbl_prm"]["u_axis"]["x"] = - prevs_nrn3[0]["meta"]["glbl_prm"]["u_axis"]["x"]
+                        prevs_nrn3[0]["meta"]["glbl_prm"]["u_axis"]["y"] = - prevs_nrn3[0]["meta"]["glbl_prm"]["u_axis"]["y"]
+                
+                nrn3["meta"]["angles"] = {}
+                nrn3["DbConnectivity"]["angles"] = {}
+
+                all_prevs[crt_branch].extend(list(strc_nrn2.values()))
+                new_prevs_nrn3.append(nrn3)
+                vector_1 = nrn3["meta"]["glbl_prm"]["u_axis"]
+
+                for prev_nrn3 in prevs_nrn3:
+                    # print("prev_nrn3",prev_nrn3)
+                    prev_nrn3["DbConnectivity"]["lateral_connexion"].append(nrn3["_id"])
+                    nrn3["DbConnectivity"]["lateral_connexion"].append(prev_nrn3["_id"])
+                    vector_2 = prev_nrn3["meta"]["glbl_prm"]["u_axis"]
+                    nrn3["DbConnectivity"]["angles"][prev_nrn3["_id"]] = self.nrn_tls.calc_angle(vector_1, vector_2)
+                    try:
+                        prev_nrn3["DbConnectivity"]["angles"][nrn3["_id"]] = nrn3["DbConnectivity"]["angles"][prev_nrn3["_id"]]
+                    except:
+                        pass
+                crt_branch += 1
+
+            prevs_nrn3 = new_prevs_nrn3
+
+            crt_branch = 0
+            if len(all_prevs[crt_branch])==0:
                 try:
-                    nexts_list[nrn_id] = remaining_nrn2_id[nrn_id]
-                    remaining_nrn2_id.pop(nrn_id)
+                    all_prevs = [[remaining_nrn2_id.pop(list(remaining_nrn2_id.keys())[0])]]
                 except:
-                    pass
-        print("nexts_list is", nexts_list.keys())
-        branchs = []
-        branchs.append({})
-        crn_nrn = list(nexts_list.values())[0]
-        branchs[0][crn_nrn["_id"]] = crn_nrn
-        crn_brnch_id = 0
-        print("branch is", branchs[0].keys())
-        nexts_list.pop(crn_nrn["_id"])
-        while len(nexts_list)>0:
-            for nrn_id in crn_nrn["DbConnectivity"]["angles"].keys():
-                try:
-                    branchs[crn_brnch_id][nrn_id] = nexts_list[nrn_id]
-                    nexts_list.pop(nrn_id)
-                    print("removed",nrn_id)
-                except:
-                    print("nothing to be done")
-            if len(nexts_list)>0:
-                crn_brnch_id += 1
-                branchs.append({})
-                crn_nrn = list(nexts_list.values())[0]
-                branchs[crn_brnch_id][crn_nrn["_id"]] = crn_nrn
-                nexts_list.pop(crn_nrn["_id"])
-        
-            print("nexts_list is", nexts_list.keys())
-            print("number of branches is", len(branchs))
-            for struc_nrn in branchs:
-                print(struc_nrn.keys())
-    '''
+                    all_prevs = [[]]
+
+        print(max_angle)
 
 
     def find_tips(self, cp_lst_nrns, lthrshld_tip, lthrshld_nod, G, r_thrshld_tip=-1):
@@ -692,6 +832,11 @@ class sentive_vision_network(object):
     def run_layers(self):
         self.layer_1() # pixels
         self.layer_2() # triplets
+        self.couche_3()
+        self.show_layer_vectors(3, False)
+        self.calc_angles_layer_3()
+        self.show_vectors_directions(3, False)
+        self.plot_angles_3()
         # self.layer_3() # séquences, segments
         # self.layer_3_bis() # calcul des angles
         # self.layer_4() # binomes -> caractères
@@ -859,5 +1004,162 @@ class sentive_vision_network(object):
                     else :
                         color = "purple"
                     plt.text(x,y, str(key),color=color)
-                    
-        print(nb)
+
+
+    def calc_angles_layer_3(self, bool_remove_zeros = False):
+        self.angle_mov_3 = []
+        self.angles_3 = []
+        self.ids_3 = []
+        self.dist_3 = []
+
+        nrn3_list = {}
+        crt_nrn3 = {}
+        nrn3_nexts = {}
+        lbl_1st_nrn3 = False
+        for pool in self.nrn_tls.lst_nrns:
+            if pool.neuron["layer_id"]==3:
+                if not lbl_1st_nrn3:
+                    crt_nrn3 = pool.neuron
+                    lbl_1st_nrn3 = True
+                else:
+                    nrn3_list[pool.neuron["_id"]] = pool.neuron
+
+        while (len(nrn3_list)):
+            # tu vas charger dans next les suivants à partir de lateral_connexion
+            for nxt_nrn_id in crt_nrn3["DbConnectivity"]["lateral_connexion"]:
+                try:
+                    nrn3_nexts[nxt_nrn_id] = nrn3_list.pop(nxt_nrn_id)
+                except:
+                    pass
+
+            # pour chacun des suivants de nrn3_nexts tu vas noter l'angle avec le nrn 3 en cours : crt_nrn3
+            min_angles = {}
+            lbl_1st_nrn3 = False
+            for tested_nrn3 in nrn3_nexts.values():
+                try:
+                    tmp_angle = tested_nrn3["DbConnectivity"]["angles"][crt_nrn3["_id"]]
+                    if not lbl_1st_nrn3:
+                        min_angles[tested_nrn3["_id"]] = tmp_angle
+                        lbl_1st_nrn3 = True
+                    elif np.abs(tmp_angle) < np.abs(list(min_angles.values())[0]):
+                        min_angles = {}
+                        min_angles[tested_nrn3["_id"]] = tmp_angle
+                except:
+                    pass
+
+            try:
+                # en fait tu as juste besoin de garder le minimum
+                self.angles_3.append(list(min_angles.values())[0])
+                self.ids_3.append(crt_nrn3["_id"])
+                nxt_id = list(min_angles.keys())[0]
+                cg1 = crt_nrn3["meta"]["glbl_prm"]["cg"]
+                cg2 = nrn3_nexts[nxt_id]["meta"]["glbl_prm"]["cg"]
+                try:
+                    previous_vecteur_directeur = crt_nrn3["meta"]["vecteur_directeur"]
+                except KeyError:
+                    previous_vecteur_directeur = crt_nrn3["meta"]["glbl_prm"]["u_axis"]
+                new_vecteur_directeur = {
+                    "x": cg2["x"] - cg1["x"],
+                    "y": cg2["y"] - cg1["y"],
+                }
+                self.angle_mov_3.append(self.nrn_tls.calc_angle(new_vecteur_directeur, previous_vecteur_directeur))
+
+                self.dist_3.append(np.sqrt(np.power(new_vecteur_directeur["x"],2)+np.power(new_vecteur_directeur["y"],2)))
+                if nxt_id == 129:
+                    print(nrn3_nexts[nxt_id]["meta"])
+                nrn3_nexts[nxt_id]["meta"]["vecteur_directeur"] = copy.deepcopy(new_vecteur_directeur)
+                if nxt_id == 100:
+                    print(nrn3_nexts[nxt_id]["meta"])
+                # L'heureux élu devient le neurone en court
+                crt_nrn3 = nrn3_nexts.pop(nxt_id)
+                # tous ceux qui restent dans la liste des suivants sont remis dans la liste principale
+                for tested_nrn3 in nrn3_nexts.values():
+                    nrn3_list[tested_nrn3["_id"]] = tested_nrn3
+            except:
+                break
+        
+        # La distance est la distance cumulée et pas la distance entre chaque point
+        self.x_dist = np.cumsum(self.dist_3).tolist()
+
+        if bool_remove_zeros:
+            for i in range (len(self.angles_3)-1, 0, -1):
+                if self.angles_3[i] == 0:
+                    self.angles_3.pop(i)
+                    self.x_dist.pop(i)
+                    self.ids_3.pop(i)
+    
+    def plot_angles_3(self):
+        _, ax = plt.subplots()
+        ax.plot(self.x_dist,self.angles_3)
+        x = 0
+        for id in self.ids_3:
+            y = self.angles_3[x]
+            z = self.x_dist[x]
+            ax.text(z,y, str(id))
+            x += 1
+
+
+    def plot_angles_mov_3(self):
+        _, ax = plt.subplots()
+        ax.plot(self.x_dist,self.angle_mov_3)
+        x = 0
+        for id in self.ids_3:
+            y = self.angle_mov_3[x]
+            z = self.x_dist[x]
+            ax.text(z,y, str(id))
+            x += 1
+
+
+    def show_vectors_directions(self, layer_id, lbl_show_angles=True):
+        X = []
+        Y = []
+        u_x = []
+        u_y = []
+        nb = 0
+        for nrn in self.nrn_tls.lst_nrns:
+            if nrn.neuron["layer_id"] == layer_id:
+                nrn2 = nrn.neuron
+                try:
+                    u_x.append(nrn2["meta"]["vecteur_directeur"]["x"])
+                    u_y.append(nrn2["meta"]["vecteur_directeur"]["y"])
+                    X.append(nrn2["meta"]["glbl_prm"]["cg"]["x"])
+                    Y.append(nrn2["meta"]["glbl_prm"]["cg"]["y"])
+                    nb += 1
+                except KeyError:
+                    u_x.append(nrn2["meta"]["glbl_prm"]["u_axis"]["x"])
+                    u_y.append(nrn2["meta"]["glbl_prm"]["u_axis"]["y"])
+                    X.append(nrn2["meta"]["glbl_prm"]["cg"]["x"])
+                    Y.append(nrn2["meta"]["glbl_prm"]["cg"]["y"])
+                    nb += 1
+
+        _, ax = plt.subplots()     
+        ax.quiver(X,Y,u_x,u_y)
+        for nrn in self.nrn_tls.lst_nrns:
+            if nrn.neuron["layer_id"] == layer_id:
+                nrn2 = nrn.neuron
+                x = nrn2["meta"]["glbl_prm"]["cg"]["x"]
+                y = nrn2["meta"]["glbl_prm"]["cg"]["y"]
+                ax.text(x,y, str(nrn2["_id"]))
+                if not lbl_show_angles:
+                    continue
+                try:
+                    angles = nrn2["DbConnectivity"]['angles']
+                except:
+                    continue
+                for key in angles:
+                    y += 0.5
+                    angle = angles[key]
+                    angle = np.abs(angle)
+                    if angle > (np.pi)/2:
+                        angle = np.pi - angle
+                    if angle ==0:
+                        color = "green"
+                    elif angle < 0.1:
+                        color = "yellow"
+                    elif angle < 0.4:
+                        color = "orange"
+                    elif angle < 0.8:
+                        color = "red"
+                    else :
+                        color = "purple"
+                    ax.text(x,y, str(key),color=color)

@@ -383,7 +383,12 @@ class sentive_neuron_helper():
         test = np.sum(np.multiply(np_c_3,np_c_2))
         if test < 0 :
             signe = -1
-        angle =  signe * np.arccos(np.sum(np.multiply(np_c_1,np_c_2))/(np.sqrt(np.sum(np.power(np_c_1,2)))*np.sqrt(np.sum(np.power(np_c_2,2)))))
+        tmp_value = np.sum(np.multiply(np_c_1,np_c_2))/(np.sqrt(np.sum(np.power(np_c_1,2)))*np.sqrt(np.sum(np.power(np_c_2,2))))
+        if tmp_value<-1:
+            return signe * np.pi
+        elif tmp_value > 1:
+            return 0
+        angle =  signe * np.arccos(tmp_value)
         if np.isnan(angle):
             return signe * np.arccos(np.round(np.sum(np.multiply(np_c_1,np_c_2))/(np.sqrt(np.sum(np.power(np_c_1,2)))*np.sqrt(np.sum(np.power(np_c_2,2))))))
         return angle
@@ -468,7 +473,7 @@ class sentive_neuron_helper():
         
     
     
-    def raw_rotate_vector(self, vector, angle_rotation):
+    def draw_rotate_vector(self, vector, angle_rotation):
         """
         Retourne un angle après rotation
         Ne fait pas d'arrondi contrairement à l'autre fonction rotate_vector
@@ -481,8 +486,50 @@ class sentive_neuron_helper():
         output_vector["y"] = vector["x"] * np.sin(angle_rotation) + vector["y"] * np.cos(angle_rotation)
         return output_vector
     
+
+    def draw_line(self, mtrx, init_pos, new_pos):
+        # Allumer toutes les positions intermédiaires
+        # Compter le nombre de pixels intermédiaires
+        # En X et en Y
+        # print("init_pos",init_pos)
+        # print("new_pos",new_pos)
+        nb_x = new_pos["x"] - init_pos["x"]
+        nb_y = new_pos["y"] - init_pos["y"]
+        # print("nb_x",nb_x, "nb_y",nb_y)
+        
+
+        if np.abs(nb_x) > np.abs(nb_y):
+            if nb_x < 0:
+                signe = -1
+            else:
+                signe = 1
+            for i in range(1, np.abs(nb_x)):
+                proportion = i/nb_x
+                crt_pos_x = init_pos["x"] + (i * signe)
+                crt_pos_y = int(round(init_pos["y"] + signe * proportion * nb_y))
+                # print(crt_pos_x, crt_pos_y)
+                try:
+                    mtrx[crt_pos_y][crt_pos_x] = 1
+                except:
+                    pass
+        else:
+            if nb_y > 0:
+                signe = 1
+            else:
+                signe = -1
+            for i in range(1, np.abs(nb_y)):
+                proportion = i/nb_y
+                crt_pos_y = init_pos["y"] + signe * i
+                crt_pos_x = int(round(init_pos["x"] + signe * proportion * nb_x))
+                #print(crt_pos_x, crt_pos_y)
+                try:
+                    mtrx[crt_pos_y][crt_pos_x] = 1
+                except:
+                    pass
+        return mtrx
     
-    def nrn_drwr(self, mtrx, vector, angle, length, start):
+
+    def nrn_drawer(self, mtrx, vector, angle, length, start, pente = 0):
         """
         Dessine un segment de courbe
         ============================
@@ -498,19 +545,40 @@ class sentive_neuron_helper():
         new_pos["x"] = int(round(tmp_pos["x"]))
         tmp_pos["y"] = new_pos["y"]+vector["y"]
         new_pos["y"] = int(round(tmp_pos["y"]))
-        mtrx[new_pos["y"]][new_pos["x"]] = 1
-        angle = angle / 2
+        try:
+            mtrx[new_pos["y"]][new_pos["x"]] = 1
+        except:
+            pass
+        # angle = angle / 2
+
+        self.draw_line(mtrx, start, new_pos)
 
         for i in range(length-1):
-            # rotate vector
-            vector = self.raw_rotate_vector(vector, angle)
+            
+            if pente !=0:
+                angle += pente
+
+            # Sauvegarde de la position initiale
+            init_pos = copy.deepcopy(new_pos)
+            # rotate vector : position finale
+            # calcul de la nouvelle position
+            vector = self.draw_rotate_vector(vector, angle)
             tmp_pos["x"] = tmp_pos["x"]+vector["x"]
             new_pos["x"] = int(round(tmp_pos["x"]))
             tmp_pos["y"] = tmp_pos["y"]+vector["y"]
             new_pos["y"] = int(round(tmp_pos["y"]))
-            mtrx[new_pos["y"]][new_pos["x"]] = 1
+            try:
+                mtrx[new_pos["y"]][new_pos["x"]] = 1
+            except:
+                pass
 
-        return mtrx
+            self.draw_line(mtrx, init_pos, new_pos)
+        
+        print("angle final:", angle )
+        print("position finale y, x",new_pos["y"],new_pos["x"])
+        print("dernier vector", vector)
+
+        return mtrx, angle, new_pos, vector
     
 
     def char_drawer(self, mtrx, start_point, tbl_code_char):
