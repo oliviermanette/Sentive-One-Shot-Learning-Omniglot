@@ -1161,6 +1161,31 @@ class sentive_vision_network(object):
             b = 0
             score_length = a * ratio_length + b
         return score_length
+    
+
+    def get_single_curve_activation(self, nrn3_to_compare, nrn3_curve_id):
+        nrn3 = self.nrn_tls.get_neuron_from_id(nrn3_curve_id)
+
+        # Vérifie que le nrn3 existe bien sinon quitte et retourne 0
+        try:
+            if nrn3_curve_id != nrn3["_id"]:
+                return 0
+        except:
+            return 0
+        
+        # calculer l'écart entre les 2 angles
+        ecart_angle = np.abs(nrn3_to_compare["meta"]["curve"]["angle"] - nrn3["meta"]["curve"]["angle"])
+        # calculer le score
+        if ecart_angle > np.pi/4:
+            score = 0
+        else:
+            score = np.abs(1-ecart_angle*4/np.pi)
+
+        # comparer les longueurs des 2 nrn3 courbe
+
+        # calculer la longueur du nrn3_to_compare
+        return score
+
 
 
     def find_tips(self, cp_lst_nrns, lthrshld_tip, lthrshld_nod, G, r_thrshld_tip=-1):
