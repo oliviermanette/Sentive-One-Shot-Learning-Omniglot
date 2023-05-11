@@ -22,16 +22,16 @@ class sentive_vision_line(object):
                 "averaged_prediction" : 0.0,
                 "nb_points_aligned" : 1,
                 "cumulated_angle" : 0.0,
-                "last_vector" : {
-                    "x" : 0.0,
-                    "y" : 0.0
-                },
                 "line" : {
                     "starting_point" : {
                         "x" : 0.0,
                         "y" : 0.0
                     },
                     "basis_vector" : {
+                        "x" : 0.0,
+                        "y" : 0.0
+                    },
+                    "last_position" : {
                         "x" : 0.0,
                         "y" : 0.0
                     },

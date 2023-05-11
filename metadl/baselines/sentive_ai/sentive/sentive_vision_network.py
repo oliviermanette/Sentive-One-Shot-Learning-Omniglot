@@ -621,6 +621,9 @@ class sentive_vision_network(object):
                             print("angle OK pour sauvegarder ")
                             # finalement on sauvegarde pas
                             nrn3_not_found = False
+
+                            # mettre à jour last_position
+                            nrn3["meta"]["line"]["last_position"] = nrn2["meta"]["center"]
                     else:
                         nrn3["meta"]["nb_points_aligned"] = 0
                         nrn3["meta"]["pending_nb_iteration"] += 1
@@ -1097,6 +1100,68 @@ class sentive_vision_network(object):
         nrn3["meta"]["pixels_matrix"] = mtrx
         '''
         return lst_nrn3
+    
+
+    def get_single_line_activation(self, nrn3_to_compare, nrn3_line_id):
+        nrn3 = self.nrn_tls.get_neuron_from_id(nrn3_line_id)
+
+        # Vérifie que le nrn3 existe bien sinon quitte et retourne 0
+        try:
+            if nrn3_line_id != nrn3["_id"]:
+                return 0
+        except:
+            return 0
+        
+        # calculer l'angle entre les 2 basis_vector
+        angle = self.nrn_tls.calc_angle(nrn3["meta"]["line"]["basis_vector"], nrn3_to_compare["meta"]["line"]["basis_vector"])
+        # calculer le score 
+        score = np.abs(1-angle*2/np.pi)
+
+        # comparer les longueurs des 2 nrn3 ligne
+        # calculer la longueur du nrn3_to_compare
+        length_nrn3_to_compare = np.sqrt(np.power((nrn3_to_compare["meta"]["line"]["starting_point"]["x"]-nrn3_to_compare["meta"]["line"]["last_position"]["x"]),2)+np.power((nrn3_to_compare["meta"]["line"]["starting_point"]["y"]-nrn3_to_compare["meta"]["line"]["last_position"]["y"]),2))
+        length_nrn3 = np.sqrt(np.power((nrn3["meta"]["line"]["starting_point"]["x"] - nrn3["meta"]["line"]["last_position"]["x"]),2)+np.power((nrn3["meta"]["line"]["starting_point"]["y"] - nrn3["meta"]["line"]["last_position"]["y"]),2))
+
+        ratio_length = length_nrn3_to_compare / length_nrn3
+
+        score_length = self.activation_double_max(ratio_length)
+
+        # Comparer le nombre d'itérations des 2 nrn3 ligne
+        ratio_nb = nrn3_to_compare["meta"]["line"]["nb_iteration"]/nrn3["meta"]["line"]["nb_iteration"]
+        score_nb = self.activation_double_max(ratio_nb)
+
+        # calculer le score final
+        return 0.76 * score + 0.12 * score_length + score_nb * 0.12
+
+
+    def activation_double_max(self, ratio_length):
+        """Petite fonction d'activation qui permet de comparer 2 valeur. 
+        Si les 2 valeurs sont les mêmes il retourne 1, 
+        sinon il retourne une valeur comprise entre 0 et 1
+        Il retourne 0 si le ratio entre les 2 valeurs est supérieur ou égale à 2
+        il retourne 0 si le ratio entre les 2 valeurs est inférieur ou égale à 0
+        il retourne une valeur comprise entre 0 et 1 si le ratio est compris entre 0 et 2
+
+        Args:
+            ratio_length (_type_): Rapport entre 2 valeurs dont on souhaite obtenir un score de comparaison borné entre 0 et 1
+
+        Returns:
+            _type_: valeur float entre 0 et 1
+        """
+        if ratio_length > 2:
+            score_length = 0
+        elif ratio_length > 1:
+            a = -1
+            b = 2
+            score_length = a * ratio_length + b
+        elif ratio_length < 0:
+            score_length = 0
+        else:
+            a = 1
+            b = 0
+            score_length = a * ratio_length + b
+        return score_length
+
 
     def find_tips(self, cp_lst_nrns, lthrshld_tip, lthrshld_nod, G, r_thrshld_tip=-1):
         l_tmp_tips = [] # id des neurones situés à une extrémité

@@ -17,7 +17,7 @@ class sentive_brain():
             ### self.nnet[i].draw_selected_segment_path()
         # J'ai ici tous les binomes qui sont terminés.
         # Je dois les comparer avec les autres caractères.
-        # Un boucle pour passer en revu chaque caractère
+        # Un boucle pour passer en revue chaque caractère
         # self.nnet[0].layer_1()
         # self.nnet[0].layer_2()
         # self.nnet[0].layer_3()
