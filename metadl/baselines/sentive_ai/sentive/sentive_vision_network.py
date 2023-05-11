@@ -22,7 +22,7 @@ class sentive_vision_network(object):
         
         ###########################################
         # meta parameters
-        self.SEUIL = 0.35
+        self.SEUIL = -0.5
 
         self.IMG_SIZE = 28
         self.angle_tolerance_deg = 17
@@ -78,6 +78,20 @@ class sentive_vision_network(object):
         self.slct_sgmts = []
         self.nrn_saccade = []
 
+        self.curve_prototype = {
+			"starting_point" : {
+				"x" : 0.0,
+				"y" : 0.0
+			},
+			"basis_vector" : {
+				"x" : 0.0,
+				"y" : 0.0
+			},
+			"nb_iteration" : 0,
+			"rotation_angle" : 0.0,
+			"acceleration_step" : 0.0
+		}
+
 
     def layer_1(self):
         ##################################################
@@ -94,6 +108,9 @@ class sentive_vision_network(object):
                     self.nrn_tls.lst_nrns[nb].neuron["meta"]["center"]["x"] = x
                     self.nrn_tls.lst_nrns[nb].neuron["meta"]["center"]["y"] = y
                     self.nrn_tls.lst_nrns[nb].neuron["meta"]["matrix_width"] = 1
+                    # le poids est la valeur du pixel
+                    # passer les valeurs de l'image entre -1 et 1 à des valeurs comprises entre 0 et 1
+                    self.nrn_tls.lst_nrns[nb].neuron["weight"] = self.episode[y][x][0] / 2 + 0.5
                     
                     self.nrn_pxl_map[y][x] = self.nrn_tls.lst_nrns[nb].neuron["_id"]
 
@@ -117,6 +134,84 @@ class sentive_vision_network(object):
         self.glbl_prm["cg"]["x"] = np.mean(self.np_coord[:,0])
         self.glbl_prm["cg"]["y"] = np.mean(self.np_coord[:,1])
         # print(self.glbl_prm)
+
+
+    def layer_2_v2(self):
+        ##################################################
+        ########## NEURONES DE LA COUCHE 2 (t_3) #########
+        ##################################################
+        # Les neurones de cette couche ont des champs récepteurs 
+        # qui sont des matrices de *3x3* mais orientés
+
+        # copie locale de nrn_pxl_map
+        nrn_pxl_map = copy.deepcopy(self.nrn_pxl_map)
+        
+        # Création de la nouvelle couche
+        self.nrn_tls.new_layer()
+        # liste contenant les id de la couche 2
+        lst_nrn2_pos = []
+
+        # on crée un premier neurone de la couche 2
+        nb  = self.nrn_tls.add_new_nrn()
+        # id minimum des neurones de la couche 2
+        nb_min = nb
+        # on ajoute le neurone à la liste des neurones de la couche 2
+        lst_nrn2_pos.append(nb)
+        # racourci pour accéder au neurone
+        nrn2 = self.nrn_tls.lst_nrns[nb].neuron
+
+        # on modifie les paramètres du neurone créé
+        x = self.nrn_tls.lst_nrns[0].neuron["meta"]["center"]["x"]
+        nrn2["meta"]["center"]["x"] = x
+        y = self.nrn_tls.lst_nrns[0].neuron["meta"]["center"]["y"]
+        nrn2["meta"]["center"]["y"] = y
+        nrn2["meta"]["matrix_width"] = 3
+
+        # pixel central du neurone
+        central_pixel_id = nrn_pxl_map[y][x]
+
+        # supprime le pixel central de la map
+        nrn_pxl_map[y][x] = 0
+
+        # sub_pxl_map contient les identifiants de chaque neurone pixel sur une carte nrnl_map
+        sub_pxl_map = nrn_pxl_map[y-1:y+2, x-1:x+2]
+
+        nrn2["meta"]["sub_pxl_map"] = sub_pxl_map
+
+        # ajoute les id des neurones pixels dans la liste des pre_synaptique
+        tmp_list_sub_pxl = list(set(sub_pxl_map.ravel()))
+        nrn2["DbConnectivity"]["pre_synaptique"] = tmp_list_sub_pxl
+        # ajoute le neurone central dans la liste des pre_synaptique
+        nrn2["DbConnectivity"]["pre_synaptique"].append(central_pixel_id)
+
+        # supprime les neurones pixels dans nrn_pxl_map qui sont dans le champ récepteur du neurone
+        for tmp_y in range(y-1,y+2):
+            for tmp_x in range(x-1,x+2):
+                nrn_pxl_map[tmp_y][tmp_x] = 0
+
+        ## calcule le vecteur d'orientation moyen des pixels
+        # pour chaque neurone pixel de la liste sub_pxl_map on calcule le vecteur d'orientation
+        x_composant = []
+        y_composant = []
+        weight_sum = 0
+        for nrn_pxl_id in tmp_list_sub_pxl:
+            if nrn_pxl_id > 0:
+                # on récupère le neurone pixel
+                nrn_pxl = self.nrn_tls.lst_nrns[nrn_pxl_id-1].neuron
+                # on pondère par le poids du neurone pixel
+                weight_sum += nrn_pxl["weight"]
+                # on récupère le vecteur d'orientation du neurone pixel
+                x_composant.append(nrn_pxl["weight"]*(nrn_pxl["meta"]["center"]["x"] - nrn2["meta"]["center"]["x"]))
+                y_composant.append(nrn_pxl["weight"]*(nrn_pxl["meta"]["center"]["y"] - nrn2["meta"]["center"]["y"]))
+
+        # on fait la moyenne des composantes
+        x_composant = np.mean(x_composant)/weight_sum
+        y_composant = np.mean(y_composant)/weight_sum
+
+
+
+
+
 
     
     def layer_2(self):
@@ -231,15 +326,22 @@ class sentive_vision_network(object):
         '''
             Cette couche détermine les angles de rotation du trait en chaque point.
         '''
+        # création d'une nouvelle couche
         self.nrn_tls.new_layer()
-        nb  = self.nrn_tls.add_new_nrn()
+
+        #création d'un nouveau neurone
+        nb  = self.nrn_tls.add_new_nrn("sentive_arc_neuron")
         self.nb_min_nrn3 = nb
         lst_nrn3_pos = [nb]
+        lst_nrn3 = {}
         nrn3 = self.nrn_tls.lst_nrns[nb].neuron
+        lst_nrn3[nrn3['_id']] = nrn3
         prevs_nrn3 = [nrn3]
 
+        # initialisation du panier contenant la liste de tous les neurones 2 restants
         remaining_nrn2_id = {}
         i = 0
+        # Pour cela je fais une boucle sur tous les nrn2 et je les copie dans mon panier
         for nrn in self.nrn_tls.lst_nrns:
             if nrn.neuron["layer_id"] == 2:
                 nrn2 = nrn.neuron
@@ -248,8 +350,13 @@ class sentive_vision_network(object):
                 else:
                     remaining_nrn2_id[nrn2["_id"]] = nrn2
                 i += 1
+        # Le premier nrn3 est par défaut connecté au premier nrn2 de la liste
         nrn3["DbConnectivity"]["pre_synaptique"].append(crnt_nrn["_id"])
-        nrn3["meta"]["glbl_prm"] = crnt_nrn["meta"]["glbl_prm"]
+        # Les nrn2 possèdent des "glbl_prm" qui donnent le cg des pixels et l'orientation.
+        nrn3["meta"]["last_nrn2"] = {
+            "glbl_prm" : crnt_nrn["meta"]["glbl_prm"],
+            "vecteur_deplacement" : np.nan
+        }
         max_angle = 0
 
         # charge la liste des précédents par défaut
@@ -268,7 +375,7 @@ class sentive_vision_network(object):
                         remaining_nrn2_id.pop(nrn_id)
                     except:
                         pass
-            # Donc on obtient une liste de tous les suivants possible à partir des neurones contenus dans all_prevs
+            # Donc on obtient une liste de tous les suivants possibles à partir des neurones contenus dans all_prevs
             # si cette liste est vide alors on arrête
             if len(nexts_list)==0:
                 print("nothing more to do")
@@ -339,6 +446,22 @@ class sentive_vision_network(object):
 
             # boucle sur chaque branche il y trouve une structure qui contient tous les neurones 2 de la branche
             for strc_nrn2 in branchs:
+
+                # boucle sur tous les neurones 3 déjà créés
+                # pour voir si un de ces neurones 3 est compatible avec les neurones 2 de la branche.
+                for a_nrn3 in lst_nrn3.values():
+                    # comparaison des vecteurs d'orientation
+                    for nrn2 in strc_nrn2.values():
+                        # vecteur d'orientation du nrn2:
+                        vector_1 = nrn2["meta"]["glbl_prm"]["u_axis"]
+                        # vecteur d'orientation du nrn3
+                        vector_2 = a_nrn3["meta"]["last_nrn2"]["glbl_prm"]["u_axis"]
+                        result_angle = np.abs(self.nrn_tls.calc_angle(vector_1, vector_2))
+                        if result_angle>(np.pi/2): 
+                            result_angle -= np.pi/2
+
+                    pass
+                
                 # Création d'un nouveau neurone 3 qui va être connecté à tous les neurones de la branche
                 nb  = self.nrn_tls.add_new_nrn()
                 lst_nrn3_pos.append(nb)
@@ -363,12 +486,12 @@ class sentive_vision_network(object):
                                                         "x":pca.components_[0][0],
                                                         "y":pca.components_[0][1]}
                                             }
-                nrn3["meta"]["vecteur_directeur"] = {
+                nrn3["meta"]["vecteur_deplacement"] = {
                                                         "x": nrn3["meta"]["glbl_prm"]["cg"]["x"] - prevs_nrn3[0]["meta"]["glbl_prm"]["cg"]["x"],
                                                         "y": nrn3["meta"]["glbl_prm"]["cg"]["y"] - prevs_nrn3[0]["meta"]["glbl_prm"]["cg"]["y"]
                                                     }
                 vector_1 = nrn3["meta"]["glbl_prm"]["u_axis"]
-                vector_2 = nrn3["meta"]["vecteur_directeur"]
+                vector_2 = nrn3["meta"]["vecteur_deplacement"]
                 result_angle = np.abs(self.nrn_tls.calc_angle(vector_1, vector_2))
                 if result_angle>(np.pi/2):
                     nrn3["meta"]["glbl_prm"]["u_axis"]["x"] = - nrn3["meta"]["glbl_prm"]["u_axis"]["x"]
@@ -376,7 +499,7 @@ class sentive_vision_network(object):
 
                 # Check if the previous nrn3 has a vector in the right direction
 
-                if not "vecteur_directeur" in prevs_nrn3[0]["meta"]:
+                if not "vecteur_deplacement" in prevs_nrn3[0]["meta"]:
                     vector_1 = prevs_nrn3[0]["meta"]["glbl_prm"]["u_axis"]
                     result_angle = np.abs(self.nrn_tls.calc_angle(vector_1, vector_2))
                     if result_angle>(np.pi/2):
@@ -831,12 +954,13 @@ class sentive_vision_network(object):
 
     def run_layers(self):
         self.layer_1() # pixels
-        self.layer_2() # triplets
-        self.couche_3()
-        self.show_layer_vectors(3, False)
-        self.calc_angles_layer_3()
-        self.show_vectors_directions(3, False)
-        self.plot_angles_3()
+        ##self.layer_2_v2() # triplets
+        # self.layer_2() # triplets
+        # self.couche_3()
+        # self.show_layer_vectors(3, False)
+        # self.calc_angles_layer_3()
+        # self.show_vectors_directions(3, False)
+        # self.plot_angles_3()
         # self.layer_3() # séquences, segments
         # self.layer_3_bis() # calcul des angles
         # self.layer_4() # binomes -> caractères
@@ -1007,10 +1131,19 @@ class sentive_vision_network(object):
 
 
     def calc_angles_layer_3(self, bool_remove_zeros = False):
+        self.nrn_tls.new_layer()
+
         self.angle_mov_3 = []
         self.angles_3 = []
         self.ids_3 = []
         self.dist_3 = []
+
+        self.angle_mov_4 = []
+        self.angles_4 = []
+        self.ids_4 = []
+        self.dist_4 = []
+
+        previous_nrn4_id = -1
 
         nrn3_list = {}
         crt_nrn3 = {}
@@ -1055,19 +1188,81 @@ class sentive_vision_network(object):
                 cg1 = crt_nrn3["meta"]["glbl_prm"]["cg"]
                 cg2 = nrn3_nexts[nxt_id]["meta"]["glbl_prm"]["cg"]
                 try:
-                    previous_vecteur_directeur = crt_nrn3["meta"]["vecteur_directeur"]
+                    previous_vecteur_deplacement = crt_nrn3["meta"]["vecteur_deplacement"]
                 except KeyError:
-                    previous_vecteur_directeur = crt_nrn3["meta"]["glbl_prm"]["u_axis"]
-                new_vecteur_directeur = {
+                    previous_vecteur_deplacement = crt_nrn3["meta"]["glbl_prm"]["u_axis"]
+                new_vecteur_deplacement = {
                     "x": cg2["x"] - cg1["x"],
                     "y": cg2["y"] - cg1["y"],
                 }
-                self.angle_mov_3.append(self.nrn_tls.calc_angle(new_vecteur_directeur, previous_vecteur_directeur))
+                self.angle_mov_3.append(self.nrn_tls.calc_angle(new_vecteur_deplacement, previous_vecteur_deplacement))
+                # création d'un nouveau neurone 4
+                nb = self.nrn_tls.add_new_nrn()
+                nrn4 = self.nrn_tls.lst_nrns[nb].neuron
+                nrn4["DbConnectivity"]["pre_synaptique"] = [crt_nrn3["_id"], nrn3_nexts[nxt_id]["_id"]]
+                
+                pxl_coords = set()
+                # Pour chaque nrn 2 j'update la matrice des pixels
+                try:
+                    pxl_coords.update(set(nrn3_nexts[nxt_id]["meta"]["pxl_coord"]))
+                    pxl_coords.update(set(crt_nrn3["meta"]["pxl_coord"]))
+                except KeyError:
+                    pass
 
-                self.dist_3.append(np.sqrt(np.power(new_vecteur_directeur["x"],2)+np.power(new_vecteur_directeur["y"],2)))
+                # ce qui me permet de calculer le vecteur directeur
+                nrn4["meta"]["pxl_coord"] = list(pxl_coords)
+                
+                pca4 = PCA(n_components=1)
+                pca4.fit(nrn4["meta"]["pxl_coord"])
+
+                nrn4["meta"]["glbl_prm"] = {
+                                                "cg":{  "x":np.mean(np.array(list(pxl_coords))[:,0]),
+                                                        "y":np.mean(np.array(list(pxl_coords))[:,1])},
+                                                "u_axis":{
+                                                        "x":pca4.components_[0][0],
+                                                        "y":pca4.components_[0][1]}
+                                            }
+                # Réorienter ici le u_axis
+                # pour cela il faut le comparer au vecteur directeur
+                vector_1 = nrn4["meta"]["glbl_prm"]["u_axis"]
+                result_angle = np.abs(self.nrn_tls.calc_angle(vector_1, new_vecteur_deplacement))
+                if result_angle>(np.pi/2):
+                    nrn4["meta"]["glbl_prm"]["u_axis"]["x"] = - nrn4["meta"]["glbl_prm"]["u_axis"]["x"]
+                    nrn4["meta"]["glbl_prm"]["u_axis"]["y"] = - nrn4["meta"]["glbl_prm"]["u_axis"]["y"]
+
+                # ajouter les connexions latérales au nrn4
+                if previous_nrn4_id != -1:
+                    nrn4["DbConnectivity"]["lateral_connexion"].append(previous_nrn4_id)
+                    prev_nrn4 = self.nrn_tls.get_neuron_from_id(previous_nrn4_id)
+                    prev_nrn4["DbConnectivity"]["lateral_connexion"].append(nrn4["_id"])
+                    # Ajoute ici l'angle avec le suivant dans le précédent
+                    vector_2 = prev_nrn4["meta"]["glbl_prm"]["u_axis"]
+                    self.angles_4.append(self.nrn_tls.calc_angle(vector_1, vector_2))
+                    self.ids_4.append(nrn4["_id"])
+                    new_vecteur_deplacement_4 = {
+                        "x" : nrn4["meta"]["glbl_prm"]["cg"]["x"] - prev_nrn4["meta"]["glbl_prm"]["cg"]["x"],
+                        "y" : nrn4["meta"]["glbl_prm"]["cg"]["y"] - prev_nrn4["meta"]["glbl_prm"]["cg"]["y"]
+                    }
+                    nrn4["meta"]["vecteur_deplacement"] = copy.deepcopy(new_vecteur_deplacement_4)
+                    self.dist_4.append(np.sqrt(np.power(new_vecteur_deplacement_4["x"],2)+np.power(new_vecteur_deplacement_4["y"],2))) 
+
+                    try:
+                        vector_2 = prev_nrn4["meta"]["vecteur_deplacement"]
+                        vector_1 = nrn4["meta"]["vecteur_deplacement"]
+                        self.angle_mov_4.append(self.nrn_tls.calc_angle(vector_1, vector_2))
+                    except KeyError:
+                        self.angle_mov_4.append(0)
+
+
+                    # Ajoute ici la distance avec le suivant dans le précédent
+                
+                
+                previous_nrn4_id = nrn4["_id"]
+
+                self.dist_3.append(np.sqrt(np.power(new_vecteur_deplacement["x"],2)+np.power(new_vecteur_deplacement["y"],2)))
                 if nxt_id == 129:
                     print(nrn3_nexts[nxt_id]["meta"])
-                nrn3_nexts[nxt_id]["meta"]["vecteur_directeur"] = copy.deepcopy(new_vecteur_directeur)
+                nrn3_nexts[nxt_id]["meta"]["vecteur_deplacement"] = copy.deepcopy(new_vecteur_deplacement)
                 if nxt_id == 100:
                     print(nrn3_nexts[nxt_id]["meta"])
                 # L'heureux élu devient le neurone en court
@@ -1080,6 +1275,7 @@ class sentive_vision_network(object):
         
         # La distance est la distance cumulée et pas la distance entre chaque point
         self.x_dist = np.cumsum(self.dist_3).tolist()
+        self.x_dist_4 = np.cumsum(self.dist_4).tolist()
 
         if bool_remove_zeros:
             for i in range (len(self.angles_3)-1, 0, -1):
@@ -1099,6 +1295,16 @@ class sentive_vision_network(object):
             x += 1
 
 
+    def plot_angles_4(self):
+        _, ax = plt.subplots()
+        ax.plot(self.x_dist_4,self.angles_4)
+        x = 0
+        for id in self.ids_4:
+            y = self.angles_4[x]
+            z = self.x_dist_4[x]
+            ax.text(z,y, str(id))
+            x += 1
+
     def plot_angles_mov_3(self):
         _, ax = plt.subplots()
         ax.plot(self.x_dist,self.angle_mov_3)
@@ -1109,6 +1315,15 @@ class sentive_vision_network(object):
             ax.text(z,y, str(id))
             x += 1
 
+    def plot_angles_mov_4(self):
+        _, ax = plt.subplots()
+        ax.plot(self.x_dist_4,self.angle_mov_4)
+        x = 0
+        for id in self.ids_4:
+            y = self.angle_mov_4[x]
+            z = self.x_dist_4[x]
+            ax.text(z,y, str(id))
+            x += 1
 
     def show_vectors_directions(self, layer_id, lbl_show_angles=True):
         X = []
@@ -1120,8 +1335,8 @@ class sentive_vision_network(object):
             if nrn.neuron["layer_id"] == layer_id:
                 nrn2 = nrn.neuron
                 try:
-                    u_x.append(nrn2["meta"]["vecteur_directeur"]["x"])
-                    u_y.append(nrn2["meta"]["vecteur_directeur"]["y"])
+                    u_x.append(nrn2["meta"]["vecteur_deplacement"]["x"])
+                    u_y.append(nrn2["meta"]["vecteur_deplacement"]["y"])
                     X.append(nrn2["meta"]["glbl_prm"]["cg"]["x"])
                     Y.append(nrn2["meta"]["glbl_prm"]["cg"]["y"])
                     nb += 1
@@ -1163,3 +1378,50 @@ class sentive_vision_network(object):
                     else :
                         color = "purple"
                     ax.text(x,y, str(key),color=color)
+
+    def show_vectors_directions_nrn3_arc(self):
+        X = []
+        Y = []
+        b_x = []
+        b_y = []
+        v_x = []
+        v_y = []
+        nb = 0
+        _, ax = plt.subplots()
+        for nrn in self.nrn_tls.lst_nrns:
+            if nrn.neuron["layer_id"] == 3:
+                nrn3 = nrn.neuron
+                v_x.append(nrn3["meta"]["last_nrn2"]["vecteur_deplacement"]["x"])
+                v_y.append(nrn3["meta"]["last_nrn2"]["vecteur_deplacement"]["y"])
+                b_x.append(nrn3["meta"]["curve"]["basis_vector"]["x"])
+                b_y.append(nrn3["meta"]["curve"]["basis_vector"]["y"])
+                x = nrn3["meta"]["last_nrn2"]["glbl_prm"]["cg"]["x"]
+                X.append(x)
+                y = nrn3["meta"]["last_nrn2"]["glbl_prm"]["cg"]["y"]
+                Y.append(y)
+                # afficher les id des neurones et l'angle de rotation
+                txt_to_show = f"{nrn3['_id']}, a:{np.round(nrn3['meta']['curve']['rotation_angle'],2)}({np.round(nrn3['meta']['curve']['angle_v_deplacement'],2)})"
+                ax.text(x,y, txt_to_show)
+        # afficher les vecteurs sur graphique
+        ax.quiver(X,Y,v_x,v_y,color="red")
+        print("vecteur déplacement en rouge")
+        ax.quiver(X,Y,b_x,b_y)
+
+
+    def show_graph_angle_f_distance_nrn3(self):
+        _, ax = plt.subplots()
+        x_dist = []
+        angles_3 = []
+        for nrn in self.nrn_tls.lst_nrns:
+            if nrn.neuron["layer_id"] == 3:
+                nrn3 = nrn.neuron
+                x_dist.append(nrn3["meta"]["curve"]["distance"])
+                angles_3.append(nrn3["meta"]["curve"]["angle_v_deplacement"])
+
+        ax.plot(x_dist,angles_3)
+            # x = 0
+            # for id in self.ids_3:
+            #     y = self.angles_3[x]
+            #     z = self.x_dist[x]
+            #     ax.text(z,y, str(id))
+            #     x += 1

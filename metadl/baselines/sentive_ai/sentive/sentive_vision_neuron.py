@@ -9,9 +9,9 @@ class sentive_vision_neuron(object):
         self.neuron = {
             "_id":number,
             "schema_version":2,
-            "type": "sentive_vision_arcs",
+            "type": "sentive_vision_matrix",
             "layer_id":0,
-            "ratio_conn":0,
+            "weight":0,
             "DbConnectivity":{
                 "pre_synaptique":[],
                 "post_synaptique":[],

@@ -7,6 +7,9 @@ import networkx as nx
 from .sentive_vision_neuron import sentive_vision_neuron
 from .sentive_sequence_nrn import sentive_sequence_nrn
 from .sentive_angle_neuron import sentive_angle_neuron
+from .sentive_arc_neuron import sentive_arc_neuron
+from .sentive_vision_curve import sentive_vision_curve
+from .sentive_vision_line import sentive_vision_line
 
 class sentive_neuron_helper():
     def __init__(self):
@@ -108,6 +111,12 @@ class sentive_neuron_helper():
             self.lst_nrns.append(sentive_sequence_nrn(self.id_nrn))
         elif nrn_type=="sentive_angle_neuron":
             self.lst_nrns.append(sentive_angle_neuron(self.id_nrn))
+        elif nrn_type=="sentive_arc_neuron":
+            self.lst_nrns.append(sentive_arc_neuron(self.id_nrn))
+        elif nrn_type=="sentive_vision_curve":
+            self.lst_nrns.append(sentive_vision_curve(self.id_nrn))
+        elif nrn_type=="sentive_vision_line":
+            self.lst_nrns.append(sentive_vision_line(self.id_nrn))
         
         self.netGraph.add_node(self.id_nrn)
 
@@ -237,8 +246,14 @@ class sentive_neuron_helper():
         # récupère le neurone visé
         crnt_nrn = self.get_neuron_from_id(nrn_id, neurons_pool)
 
+        # si le neurone est un neurone pixel alors tu remplaces la valeur de la matrice par son weight
         if crnt_nrn["layer_id"] == 1:
-            tmp_vision[int(crnt_nrn["meta"]["center"]["y"]),int(crnt_nrn["meta"]["center"]["x"])] = 5
+            pixel_value = crnt_nrn["weight"]
+        else:
+            pixel_value = 5
+
+        if crnt_nrn["layer_id"] == 1:
+            tmp_vision[int(crnt_nrn["meta"]["center"]["y"]),int(crnt_nrn["meta"]["center"]["x"])] = pixel_value
             return tmp_vision
         # récupère la liste des 
         try:
@@ -253,7 +268,7 @@ class sentive_neuron_helper():
         for sensor_id in lst_nrn:
             neuron = self.get_neuron_from_id(sensor_id, neurons_pool)
             if neuron !="":
-                tmp_vision[int(neuron["meta"]["center"]["y"]),int(neuron["meta"]["center"]["x"])] = 5
+                tmp_vision[int(neuron["meta"]["center"]["y"]),int(neuron["meta"]["center"]["x"])] = pixel_value
                 nb +=1
         if verbose:
             print(nb, "pixels")
@@ -491,12 +506,13 @@ class sentive_neuron_helper():
         # Allumer toutes les positions intermédiaires
         # Compter le nombre de pixels intermédiaires
         # En X et en Y
-        # print("init_pos",init_pos)
-        # print("new_pos",new_pos)
         nb_x = new_pos["x"] - init_pos["x"]
         nb_y = new_pos["y"] - init_pos["y"]
-        # print("nb_x",nb_x, "nb_y",nb_y)
-        
+
+        # Sauvegarder dans un tableau la position initiale
+        save_pos = [(init_pos["x"], init_pos["y"])]
+        # Sauvegarder dans un tableau la position finale
+        save_pos.append((new_pos["x"], new_pos["y"]))
 
         if np.abs(nb_x) > np.abs(nb_y):
             if nb_x < 0:
@@ -507,7 +523,8 @@ class sentive_neuron_helper():
                 proportion = i/nb_x
                 crt_pos_x = init_pos["x"] + (i * signe)
                 crt_pos_y = int(round(init_pos["y"] + signe * proportion * nb_y))
-                # print(crt_pos_x, crt_pos_y)
+                # sauvegarder la position
+                save_pos.append((crt_pos_x, crt_pos_y))
                 try:
                     mtrx[crt_pos_y][crt_pos_x] = 1
                 except:
@@ -521,12 +538,23 @@ class sentive_neuron_helper():
                 proportion = i/nb_y
                 crt_pos_y = init_pos["y"] + signe * i
                 crt_pos_x = int(round(init_pos["x"] + signe * proportion * nb_x))
-                #print(crt_pos_x, crt_pos_y)
+                # sauvegarder la position
+                save_pos.append((crt_pos_x, crt_pos_y))
                 try:
                     mtrx[crt_pos_y][crt_pos_x] = 1
                 except:
                     pass
-        return mtrx
+        return mtrx, save_pos
+    
+    def intensite_pixel_local(self, x):
+        if x >= 0 and x <= 0.5:
+            y = x + 0.5
+        elif x > 0.5 and x <= 1:
+            y = -x + 1.5
+        else:
+            print("La valeur de x doit être comprise entre 0 et 1.")
+            return 0
+        return y
     
 
     def nrn_drawer(self, mtrx, vector, angle, length, start, pente = 0):
@@ -536,49 +564,125 @@ class sentive_neuron_helper():
         En plus de la matrice dans laquelle il va dessiner, il ne prend que 4 paramètres.
         Le vecteur de départ, angle de rotation, la longueur (ou le nombre d'itérations).
         Et le point de départ.
-
         """
+        # initialisation de la matrice
         mtrx[start["y"]][start["x"]] = 1
-        new_pos = {"x": start["x"], "y": start["y"]}
-        tmp_pos = {"x": start["x"], "y": start["y"]}
-        tmp_pos["x"] = new_pos["x"]+vector["x"]
-        new_pos["x"] = int(round(tmp_pos["x"]))
-        tmp_pos["y"] = new_pos["y"]+vector["y"]
-        new_pos["y"] = int(round(tmp_pos["y"]))
-        try:
-            mtrx[new_pos["y"]][new_pos["x"]] = 1
-        except:
-            pass
-        # angle = angle / 2
+        print("**nrn_drawer** : position de départ x", start["x"],"y",start["y"])
 
-        self.draw_line(mtrx, start, new_pos)
+        # si la position est un entier, on ajoute 0.5 pour ramener au centre du pixel
+        if np.floor(start["x"])==start["x"] and np.floor(start["y"])==start["y"]:
+            new_pos = {"x": start["x"] + 0.5, "y": start["y"] + 0.5}
+            tmp_pos = {"x": start["x"] + 0.5, "y": start["y"] + 0.5}
+        else:
+            # sinon on la garde telle quelle
+            new_pos = {"x": start["x"], "y": start["y"]}
+            tmp_pos = {"x": start["x"], "y": start["y"]}
+
+        # on décale le position de départ avec le premier vecteur
+        tmp_pos["x"] = tmp_pos["x"]+vector["x"]
+        new_pos["x"] = int(np.floor(tmp_pos["x"]))
+        tmp_pos["y"] = tmp_pos["y"]+vector["y"]
+        new_pos["y"] = int(np.floor(tmp_pos["y"]))
+        
+        # assigner les intensités des pixels
+        mtrx = self.assign_pixels_intensities(mtrx, new_pos, tmp_pos)
+
+        # print("position premier vecteur x",new_pos["x"],"y", new_pos["y"])
+
+        _, save_points =  self.draw_line(mtrx, start, new_pos)
 
         for i in range(length-1):
-            
+            # Sauvegarde de la position initiale
+            init_pos = copy.deepcopy(new_pos)
+
+            # rotate vector : position finale
+            # calcul de la nouvelle position
+            # print("\n*******************")
+            # print("angle", angle, "pente", pente, "i", i)
+            vector = self.draw_rotate_vector(vector, angle)
             if pente !=0:
                 angle += pente
 
-            # Sauvegarde de la position initiale
-            init_pos = copy.deepcopy(new_pos)
-            # rotate vector : position finale
-            # calcul de la nouvelle position
-            vector = self.draw_rotate_vector(vector, angle)
-            tmp_pos["x"] = tmp_pos["x"]+vector["x"]
-            new_pos["x"] = int(round(tmp_pos["x"]))
+            # print("vector intermédiaire", vector)
+            # print("i", i)
+            tmp_pos["x"] = tmp_pos["x"] + vector["x"]
+            new_pos["x"] = int(np.floor(tmp_pos["x"]))
             tmp_pos["y"] = tmp_pos["y"]+vector["y"]
-            new_pos["y"] = int(round(tmp_pos["y"]))
+            new_pos["y"] = int(np.floor(tmp_pos["y"]))
+            print("**nrn_drawer** : position intermédiaire x",new_pos["x"], "y", new_pos["y"])
+            
+            # assigner les intensités des pixels
+            mtrx = self.assign_pixels_intensities(mtrx, new_pos, tmp_pos)
+
+            _, tmp_points = self.draw_line(mtrx, init_pos, new_pos)
+            save_points.extend(tmp_points)
+        
+        print("**nrn_drawer** : angle final:", angle )
+        print("**nrn_drawer** : position finale x",new_pos["x"],"y", new_pos["y"])
+        print("**nrn_drawer** : dernier vector", vector)
+        # supprimer les doublons de save_points
+        save_points = list(set(save_points))
+        return mtrx, angle, new_pos, vector, save_points
+
+
+    def assign_pixels_intensities(self, mtrx, new_pos, tmp_pos):
+        # Vérifie que les positions new_pos sont à l'intérieur de la mtrx
+
+        # intensité du pixel local est toujours 1
+        try:
+            mtrx[new_pos["y"]][new_pos["x"]] = 1
+        except:
+            return mtrx
+        # calcul de l'intensité des pixels adjacents
+        # l'intensité est calculée par la fonction y = 2x-1
+        # la position dans le pixel est la valeur x et la valeur y est l'intensité des pixels adjacents
+        # Si y est négatif ça correspond à l'intensité du pixel d'avant. Le pixel d'après restant noir.
+        # Si y est positif c'est le pixel d'après qui prend la valeur de y tandis que celui d'avant reste à zéro.
+
+        # calcul de l'intensité des pixels adjacents sur l'axe des x
+        pos_x = np.floor(tmp_pos["x"])
+        reste_x = tmp_pos["x"] - pos_x
+        # calcul de l'intensité
+        x_intensite = 2 * reste_x - 1
+        if x_intensite < 0:
+            # si l'intensité est négative, on met le pixel d'avant à abs(x_intensite)
             try:
-                mtrx[new_pos["y"]][new_pos["x"]] = 1
+                # si l'intensité du pixel est zéro, on met la valeur absolue de x_intensite
+                if mtrx[new_pos["y"]][new_pos["x"]-1] == 0:
+                    mtrx[new_pos["y"]][new_pos["x"]-1] = np.abs(x_intensite)
+            except:
+                pass
+        else:
+            # sinon on met le pixel d'après à x_intensite
+            try:
+                # si l'intensité du pixel est zéro, on met la valeur absolue de x_intensite
+                if mtrx[new_pos["y"]][new_pos["x"]+1] == 0:
+                    mtrx[new_pos["y"]][new_pos["x"]+1] = x_intensite
             except:
                 pass
 
-            self.draw_line(mtrx, init_pos, new_pos)
-        
-        print("angle final:", angle )
-        print("position finale y, x",new_pos["y"],new_pos["x"])
-        print("dernier vector", vector)
-
-        return mtrx, angle, new_pos, vector
+        # calcul de l'intensité des pixels adjacents sur l'axe des y
+        pos_y = np.floor(tmp_pos["y"])
+        reste_y = tmp_pos["y"] - pos_y
+        # calcul de l'intensité
+        y_intensite = 2 * reste_y - 1
+        if y_intensite < 0:
+            # si l'intensité est négative, on met le pixel d'avant à abs(x_intensite)
+            try:
+                # si l'intensité du pixel est zéro, on met la valeur absolue de x_intensite
+                if mtrx[new_pos["y"]-1][new_pos["x"]] == 0:
+                    mtrx[new_pos["y"]-1][new_pos["x"]] = np.abs(y_intensite)
+            except:
+                pass
+        else:
+            # sinon on met le pixel d'après à x_intensite
+            try:
+                # si l'intensité du pixel est zéro, on met la valeur absolue de x_intensite
+                if mtrx[new_pos["y"]+1][new_pos["x"]] == 0:
+                    mtrx[new_pos["y"]+1][new_pos["x"]] = y_intensite
+            except:
+                pass
+        return mtrx
     
 
     def char_drawer(self, mtrx, start_point, tbl_code_char):
@@ -780,12 +884,12 @@ class sentive_neuron_helper():
             neurons_pool = self.lst_nrns
         for nrn_pos in range(len(neurons_pool)):
             if neurons_pool[nrn_pos].neuron["_id"]==nrn_id:
-                if nrn_id==128:
-                    print(nrn_id,len(neurons_pool))
                 if lbl_General_Pool:
                     return self.remove_nrn_pos(nrn_pos, -1)
                 return self.remove_nrn_pos(nrn_pos, neurons_pool)
         return False
+    
+
 
     
     def diff_sequence(self, sequence1, sequence2, verbose=False):    
