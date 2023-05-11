@@ -1182,10 +1182,14 @@ class sentive_vision_network(object):
             score = np.abs(1-ecart_angle*4/np.pi)
 
         # comparer les longueurs des 2 nrn3 courbe
+        ratio_lenth = nrn3_to_compare["meta"]["curve"]["nb_iteration"]/nrn3["meta"]["curve"]["nb_iteration"]
+        score_length = self.activation_double_max(ratio_lenth)
 
-        # calculer la longueur du nrn3_to_compare
-        return score
+        # comparer les orientations des basis vector 
+        angle = self.nrn_tls.calc_angle(nrn3["meta"]["curve"]["basis_vector"], nrn3_to_compare["meta"]["curve"]["basis_vector"])
+        score_orientation = np.abs(1-angle*2/np.pi) 
 
+        return 0.76 * score + 0.12 * score_length + 0.12 * score_orientation
 
 
     def find_tips(self, cp_lst_nrns, lthrshld_tip, lthrshld_nod, G, r_thrshld_tip=-1):
