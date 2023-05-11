@@ -135,407 +135,968 @@ class sentive_vision_network(object):
         self.glbl_prm["cg"]["y"] = np.mean(self.np_coord[:,1])
         # print(self.glbl_prm)
 
-
-    def layer_2_v2(self):
-        ##################################################
-        ########## NEURONES DE LA COUCHE 2 (t_3) #########
-        ##################################################
-        # Les neurones de cette couche ont des champs récepteurs 
-        # qui sont des matrices de *3x3* mais orientés
-
-        # copie locale de nrn_pxl_map
-        nrn_pxl_map = copy.deepcopy(self.nrn_pxl_map)
-        
-        # Création de la nouvelle couche
-        self.nrn_tls.new_layer()
-        # liste contenant les id de la couche 2
-        lst_nrn2_pos = []
-
-        # on crée un premier neurone de la couche 2
-        nb  = self.nrn_tls.add_new_nrn()
-        # id minimum des neurones de la couche 2
-        nb_min = nb
-        # on ajoute le neurone à la liste des neurones de la couche 2
-        lst_nrn2_pos.append(nb)
-        # racourci pour accéder au neurone
-        nrn2 = self.nrn_tls.lst_nrns[nb].neuron
-
-        # on modifie les paramètres du neurone créé
-        x = self.nrn_tls.lst_nrns[0].neuron["meta"]["center"]["x"]
-        nrn2["meta"]["center"]["x"] = x
-        y = self.nrn_tls.lst_nrns[0].neuron["meta"]["center"]["y"]
-        nrn2["meta"]["center"]["y"] = y
-        nrn2["meta"]["matrix_width"] = 3
-
-        # pixel central du neurone
-        central_pixel_id = nrn_pxl_map[y][x]
-
-        # supprime le pixel central de la map
-        nrn_pxl_map[y][x] = 0
-
-        # sub_pxl_map contient les identifiants de chaque neurone pixel sur une carte nrnl_map
-        sub_pxl_map = nrn_pxl_map[y-1:y+2, x-1:x+2]
-
-        nrn2["meta"]["sub_pxl_map"] = sub_pxl_map
-
-        # ajoute les id des neurones pixels dans la liste des pre_synaptique
-        tmp_list_sub_pxl = list(set(sub_pxl_map.ravel()))
-        nrn2["DbConnectivity"]["pre_synaptique"] = tmp_list_sub_pxl
-        # ajoute le neurone central dans la liste des pre_synaptique
-        nrn2["DbConnectivity"]["pre_synaptique"].append(central_pixel_id)
-
-        # supprime les neurones pixels dans nrn_pxl_map qui sont dans le champ récepteur du neurone
-        for tmp_y in range(y-1,y+2):
-            for tmp_x in range(x-1,x+2):
-                nrn_pxl_map[tmp_y][tmp_x] = 0
-
-        ## calcule le vecteur d'orientation moyen des pixels
-        # pour chaque neurone pixel de la liste sub_pxl_map on calcule le vecteur d'orientation
-        x_composant = []
-        y_composant = []
-        weight_sum = 0
-        for nrn_pxl_id in tmp_list_sub_pxl:
-            if nrn_pxl_id > 0:
-                # on récupère le neurone pixel
-                nrn_pxl = self.nrn_tls.lst_nrns[nrn_pxl_id-1].neuron
-                # on pondère par le poids du neurone pixel
-                weight_sum += nrn_pxl["weight"]
-                # on récupère le vecteur d'orientation du neurone pixel
-                x_composant.append(nrn_pxl["weight"]*(nrn_pxl["meta"]["center"]["x"] - nrn2["meta"]["center"]["x"]))
-                y_composant.append(nrn_pxl["weight"]*(nrn_pxl["meta"]["center"]["y"] - nrn2["meta"]["center"]["y"]))
-
-        # on fait la moyenne des composantes
-        x_composant = np.mean(x_composant)/weight_sum
-        y_composant = np.mean(y_composant)/weight_sum
-
-
-
-
-
-
     
     def layer_2(self):
         ##################################################
         ########## NEURONES DE LA COUCHE 2 (t_3) #########
         ##################################################
         # Les neurones de cette couche ont des champs récepteurs 
-        # qui sont des matrices de *3x3*
-        # avec des mata paramètres les décrivants.
+        # qui sont des matrices de *3x3* mais orientées
+
+        # copie locale de nrn_pxl_map
+        nrn_pxl_map = copy.deepcopy(self.nrn_pxl_map)
+
+        # Création de la nouvelle couche
         self.nrn_tls.new_layer()
-        
+        # liste contenant les id de la couche 2
         lst_nrn2_pos = []
 
-        nb_min = 0
+        # on modifie les paramètres du neurone créé
+        # on crée des positions new_x et new_y vides pour le neurone
+        new_x = None
+        new_y = None
 
-        for neuron_idx in range(self.nrn_tls.nb_nrns):
-            # position du centre du neurone
-            x = self.nrn_tls.lst_nrns[neuron_idx].neuron["meta"]["center"]["x"]
-            y = self.nrn_tls.lst_nrns[neuron_idx].neuron["meta"]["center"]["y"]
+        # Je crée une variable qui va contenir l'angle de rotation précédent
+        previous_angle_a_n2 = None
 
-            # sub_pxl_map contient les identifiants de chaque neurone pixel sur une carte nrnl_map
-            sub_pxl_map = self.nrn_pxl_map[y-1:y+2, x-1:x+2]
+        # initialisation de composants de décalage du vecteur de déplacement
+        shift_x = 0
+        shift_y = 0
 
-            # crée un nouveau neurone de taille 3
+        # liste de nrn3 
+        lst_nrn3 = []
+
+        # liste de nrn3 coupled
+        list_coupled_nrn3s = []
+
+        bool_first_nrn2 = True
+
+        lst_nrn3_found = []
+
+        # boucle tant que new_x et new_y sont positifs ou vide:
+        while new_x == None or new_y == None or (new_x > 0 and new_y > 0):
+            # on crée un nouveau neurone de la couche 2
             nb  = self.nrn_tls.add_new_nrn()
-            if nb_min == 0:
-                nb_min = nb
+            if bool_first_nrn2:
+                # id minimum des neurones de la couche 2
+                nb_min_nrn2 = copy.deepcopy(nb)
+                bool_first_nrn2 = False
+            # on ajoute le neurone à la liste des neurones de la couche 2
             lst_nrn2_pos.append(nb)
+            # racourci pour accéder au neurone
             nrn2 = self.nrn_tls.lst_nrns[nb].neuron
-            if nrn2["_id"] == 61:
-                print("sub_pxl_map")
-            nrn2["meta"]["center"]["x"] = x
-            nrn2["meta"]["center"]["y"] = y
-            nrn2["meta"]["matrix_width"] = 3
-            nrn2["meta"]["sub_pxl_map"] = sub_pxl_map
-            nrn2["DbConnectivity"]["pre_synaptique"] = list(set(sub_pxl_map.ravel()))
-            nrn2["meta"]["pxl_coord"] = []
-            nrn2["meta"]["glbl_prm"] = {
-                                            "cg":{"x":0,"y":0},
-                                            "u_axis":{"x":0,"y":0}
-                                        }
 
-            self.nrn_l2_map[y][x] = nrn2["_id"]
+            # si new_x et new_y sont vides on prend la position du premier neurone de la couche 1
+            if new_x == None or new_y == None:
+                new_x = self.nrn_tls.lst_nrns[0].neuron["meta"]["center"]["x"]
+                nrn2["meta"]["center"]["x"] = new_x
+                new_y = self.nrn_tls.lst_nrns[0].neuron["meta"]["center"]["y"]
+                nrn2["meta"]["center"]["y"] = new_y
+                nrn2["meta"]["matrix_width"] = 3
+            else:
+                nrn2["meta"]["center"]["x"] = new_x
+                nrn2["meta"]["center"]["y"] = new_y
+                nrn2["meta"]["matrix_width"] = 3
+            print("\n\n______________________________________________________________________________________")
+            print("nrn2 id", nrn2["_id"])
+            print("new_x", new_x)
+            print("new_y", new_y)
+            # pixel central du neurone
+            central_pixel_id = int(self.nrn_pxl_map[new_y][new_x])
+            print("central_pixel_id", central_pixel_id)
 
-            for i in range(len(nrn2["DbConnectivity"]["pre_synaptique"])-1,-1,-1):
-                if nrn2["DbConnectivity"]["pre_synaptique"][i]==0:
-                    nrn2["DbConnectivity"]["pre_synaptique"].pop(i)
+            # supprime le pixel central de la map
+            print("nrn_pxl_map[new_y][x]", nrn_pxl_map[new_y][new_x])
+            nrn_pxl_map[new_y][new_x] = 0
+
+            # tmp_sub_pxl_map contient les identifiants de chaque neurone pixel sur une carte nrnl_map
+            tmp_sub_pxl_map = nrn_pxl_map[new_y - 1 : new_y + 2, new_x-1:new_x+2]
+            print("tmp_sub_pxl_map :\n", tmp_sub_pxl_map)
+
+            # si tmp_sub_pxl_map ne contient que des 0 on quitte la boucle
+            if np.count_nonzero(tmp_sub_pxl_map) == 0:
+                print("\n continue seulement des zéros\n")
+                new_x = None
+                new_y = None
+                # vérifie si il reste des neurones pixels dans la map nrn_pxl_map
+                if np.count_nonzero(nrn_pxl_map) == 0:
+                    print("\n break plus de neurones pixels\n")
+                    break
                 else:
-                    self.nrn_tls.netGraph.add_edge(nrn2["_id"],nrn2["DbConnectivity"]["pre_synaptique"][i])
-                    nrn_pxl = self.nrn_tls.get_neuron_from_id(nrn2["DbConnectivity"]["pre_synaptique"][i])
-                    nrn_pxl["DbConnectivity"]["post_synaptique"].append(nrn2["_id"])
+                    print("\n continue il reste des neurones pixels\n")
+                    # trouve le premier neurone pixel dans la map
+                    for tmp_y in range(0, nrn_pxl_map.shape[0]):
+                        for tmp_x in range(0, nrn_pxl_map.shape[1]):
+                            if nrn_pxl_map[tmp_y][tmp_x] > 0:
+                                new_x = tmp_x
+                                new_y = tmp_y
+                                print("new_x", new_x)
+                                print("new_y", new_y)
+                                # pixel central du neurone
+                                central_pixel_id = int(self.nrn_pxl_map[new_y][new_x])
+                                nrn2["meta"]["center"]["x"] = new_x
+                                nrn2["meta"]["center"]["y"] = new_y
+                                nrn_pxl_map[new_y][new_x] = 0
+                                # tmp_sub_pxl_map contient les identifiants de chaque neurone pixel sur une carte nrnl_map
+                                tmp_sub_pxl_map = nrn_pxl_map[new_y - 1 : new_y + 2, new_x-1:new_x+2]
+                                print("tmp_sub_pxl_map :\n", tmp_sub_pxl_map)
+                                # initialisation de composants de décalage du vecteur de déplacement
+                                shift_x = 0
+                                shift_y = 0
+                                break
+                        if new_x != None and new_y != None:
+                            break
 
-                    # ici tu dois récupérer les coordonnées du neurone présynaptique central -> nrn_pxl["meta"]["center"]["x"]
-                    x = nrn_pxl["meta"]["center"]["x"]
-                    y = nrn_pxl["meta"]["center"]["y"]
-                    nrn2["meta"]["pxl_coord"].append((x,y))
+            nrn2["meta"]["sub_pxl_map"] = self.nrn_pxl_map[new_y-1:new_y+2, new_x-1:new_x+2]
 
-            # calcul du PCA permettant d'obtenir l'orientation globale des pixels
-            pca = PCA(n_components=1)
-            pca.fit(nrn2["meta"]["pxl_coord"])
-            # on obtient les résultats ici:
-            # print(pca.components_)
-            # permet d'avoir l'orientation globale du caractère
-            nrn2["meta"]["glbl_prm"]["u_axis"]["x"]=pca.components_[0][0]
-            nrn2["meta"]["glbl_prm"]["u_axis"]["y"]=pca.components_[0][1]
+            tmp_list_sub_pxl = list(set(tmp_sub_pxl_map.ravel()))
+            # convertir tmp_list_sub_pxl en entiers
+            tmp_list_sub_pxl = [int(i) for i in tmp_list_sub_pxl]
 
-            # calcule le centre de gravité des pixels
-            self.np_coord = np.array(nrn2["meta"]["pxl_coord"])
-            nrn2["meta"]["glbl_prm"]["cg"]["x"] = np.mean(self.np_coord[:,0])
-            nrn2["meta"]["glbl_prm"]["cg"]["y"] = np.mean(self.np_coord[:,1])
+            # supprime les neurones pixels dans nrn_pxl_map qui sont dans le champ récepteur du neurone
+            for tmp_y in range(new_y-1,new_y+2):
+                for tmp_x in range(new_x-1,new_x+2):
+                    nrn_pxl_map[tmp_y][tmp_x] = 0
+
+            #     ___      _         _        _   _          
+            #    / _ \ _ _(_)___ _ _| |_ __ _| |_(_)___ _ _  
+            #   | (_) | '_| / -_) ' \  _/ _` |  _| / _ \ ' \ 
+            #    \___/|_| |_\___|_||_\__\__,_|\__|_\___/_||_|
+            #                                                
+            ## calcule le vecteur d'orientation moyen des pixels
+            # pour chaque neurone pixel de la liste tmp_sub_pxl_map on calcule le vecteur d'orientation
+            x_composant = []
+            y_composant = []
+            lst_nrn_pxl_pos = []
+            mtrx_weights_pxl = np.zeros([3,3])
+            weight_sum = 0
+            # poids du pixel central
+            mtrx_weights_pxl[1][1] = self.nrn_tls.lst_nrns[central_pixel_id-1].neuron["weight"] 
+
+            print("tmp_list_sub_pxl", tmp_list_sub_pxl)
+            for nrn_pxl_id in tmp_list_sub_pxl:
+                if nrn_pxl_id > 0:
+                    print("nrn_pxl_id", nrn_pxl_id)
+                    # on récupère le neurone pixel
+                    nrn_pxl = self.nrn_tls.lst_nrns[nrn_pxl_id-1].neuron
+                    # on pondère par le poids du neurone pixel
+                    weight_sum += nrn_pxl["weight"]
+                    print("nrn_pxl id & weight :", nrn_pxl["_id"],nrn_pxl["weight"])
+                    # on récupère le vecteur d'orientation du neurone pixel
+                    x_composant.append(nrn_pxl["weight"]*(nrn_pxl["meta"]["center"]["x"] - nrn2["meta"]["center"]["x"]))
+                    y_composant.append(nrn_pxl["weight"]*(nrn_pxl["meta"]["center"]["y"] - nrn2["meta"]["center"]["y"]))
+                    # on met dans une liste les coordonnées des neurones pixels
+                    lst_nrn_pxl_pos.append(nrn_pxl["meta"]["center"])
+                    mtrx_weights_pxl[nrn_pxl["meta"]["center"]["y"] - nrn2["meta"]["center"]["y"] + 1][nrn_pxl["meta"]["center"]["x"] - nrn2["meta"]["center"]["x"] + 1] = nrn_pxl["weight"]
+
+            # ajoute les id des neurones pixels dans la liste des pre_synaptique
+            nrn2["DbConnectivity"]["pre_synaptique"] = tmp_list_sub_pxl
+            # ajoute le neurone central dans la liste des pre_synaptique
+            nrn2["DbConnectivity"]["pre_synaptique"].append(central_pixel_id)
+
+            # on fait la moyenne des composantes
+            print("x_composant", x_composant)
+            x_composant = np.sum(x_composant)/weight_sum
+            print("y_composant", y_composant)
+            y_composant = np.sum(y_composant)/weight_sum
+            print("vecteur orientation sans shift:",x_composant,y_composant)
+
+            # on calcule le décalage du vecteur d'orientation
+            # x_composant = x_composant - shift_x
+            # y_composant = y_composant - shift_y
+            # print("shift_x", shift_x)
+            # print("shift_y", shift_y)
+            # print("vecteur orientation AVEC shift:",x_composant,y_composant)
+            # print("POSITION REELLE FINALE", new_x + x_composant, new_y + y_composant)
+            desired_x = np.floor(new_x + x_composant)
+            desired_y = np.floor(new_y + y_composant)
+
+            # on sauvegarde le vecteur d'orientation
+            nrn2["meta"]["orientation"] = {
+                "x": x_composant,
+                "y": y_composant
+            }
+
+            offset_x = np.round(x_composant)
+            offset_y = np.round(y_composant)
+
+            # calcul du décalage du vecteur d'orientation
+            shift_x += x_composant - offset_x
+            shift_y += y_composant - offset_y
+
+            # calcul de la position du prochain neurone de la couche 2
+            new_new_x = int(np.ceil(nrn2["meta"]["center"]["x"] + offset_x))
+            new_new_y = int(np.ceil(nrn2["meta"]["center"]["y"] + offset_y))
+
+            if new_new_x != new_x or new_new_y != new_y:
+                new_x = new_new_x
+                new_y = new_new_y
+                print("PROCHAIN NEURONE: [new_x:", new_x, ", new_y:", new_y, "]")
+            else:
+                if x_composant < 0:
+                    print("x_composant < 0")
+                    print("x_composant", x_composant)
+                    print("np.floor(x_composant)", np.floor(x_composant))
+                    new_x = int(np.round(nrn2["meta"]["center"]["x"] + np.floor(x_composant)))
+                else:
+                    print("x_composant > 0")
+                    print("x_composant", x_composant)
+                    print("np.ceil(x_composant)", np.ceil(x_composant))
+                    new_x = int(np.round(nrn2["meta"]["center"]["x"] + np.ceil(x_composant)))
+                if y_composant < 0:
+                    new_y = int(np.round(nrn2["meta"]["center"]["y"] + np.floor(y_composant)))
+                else:
+                    new_y = int(np.round(nrn2["meta"]["center"]["y"] + np.ceil(y_composant)))
+
+            print("PROCHAIN NEURONE SANS CHANGEMENT: [new_x:", new_x, ", new_y:", new_y, "]")
+            print("mtrx_weights_pxl:\n", mtrx_weights_pxl)
+            # prochain neurone new_x et new_y dans les coordonnées de mtrx_weights_pxl
+            print("neurone a supprimer dans la matrice : x :", new_x - nrn2["meta"]["center"]["x"] + 1, "y:", new_y - nrn2["meta"]["center"]["y"] + 1)
+
+            # on supprime le neurone suivant de la matrice afin de calculer un poids des neurones de base
+            mtrx_weights_pxl[new_y - nrn2["meta"]["center"]["y"] + 1][new_x - nrn2["meta"]["center"]["x"] + 1] = 0
+            print("mtrx_weights_pxl:\n", mtrx_weights_pxl)
+
+            # calcul des coordonnées du barycentre de la mtrx_weights_pxl
+            # on calcule le barycentre de la matrice
+            barycentre = np.zeros([2])
+            for y in range(0,3):
+                for x in range(0,3):
+                    barycentre[0] += x * mtrx_weights_pxl[y][x]
+                    barycentre[1] += y * mtrx_weights_pxl[y][x]
+
+            barycentre[0] = barycentre[0] / np.sum(mtrx_weights_pxl)
+            barycentre[1] = barycentre[1] / np.sum(mtrx_weights_pxl)
+            print("barycentre", barycentre)
+
+            # on vérifie que le neurone est dans la carte
+            if new_x < 0 or new_x >= self.nrn_pxl_map.shape[1] or new_y < 0 or new_y >= self.nrn_pxl_map.shape[0]:
+                print("\nNeurone hors de la carte")
+                new_x = -1
+                new_y = -1
+
+            #                      _____  
+            #                     |____ | 
+            #   _ __  _ __ _ __       / / 
+            #  | '_ \| '__| '_ \      \ \ 
+            #  | | | | |  | | | | .___/ / 
+            #  |_| |_|_|  |_| |_| \____/  
+            #                             
+            #                                                 
+            # variable bool qui sert à savoir si on a trouvé un neurone valide de la couche 3              
+            nrn3_not_found = True
+            nrn3_curve_not_found = True
+
+            # diretions détectées 
+            new_pixels_detected = []
+
+            # liste temporaire des neurones nrn3 trouvés
+            tmp_lst_nrn3_found = []
+            
+            # boucle sur chaque nrn3 dans la liste :
+            for nb3 in lst_nrn3:
+                # racourci pour accéder au neurone
+                nrn3 = self.nrn_tls.lst_nrns[nb3].neuron
+
+                #                    ____  _ _          
+                #    _ _  _ _ _ _   |__ / | (_)_ _  ___ 
+                #   | ' \| '_| ' \   |_ \ | | | ' \/ -_)
+                #   |_||_|_| |_||_| |___/ |_|_|_||_\___|
+                #                                       
+                # si le nrn3 est une ligne :
+                if nrn3["type"] == "sentive_vision_line":
+                    print("******************")
+                    print("nrn3", nrn3["_id"], "est une ligne")
+                    # on récupère le basis_vector du neurone 3
+                    basis_vector = nrn3["meta"]["line"]["basis_vector"]
+                    # on calcul la norme du basis vector
+                    norm_basis_vector = np.sqrt(np.power(basis_vector["x"],2)+np.power(basis_vector["y"],2))
+                    # on normalise le basis_vector
+                    if norm_basis_vector != 0:
+                        basis_vector = {
+                                "x": basis_vector["x"] / norm_basis_vector,
+                                "y": basis_vector["y"] / norm_basis_vector
+                        }
+
+                    # on récupère le starting_point du neurone 3
+                    starting_point = nrn3["meta"]["line"]["starting_point"]
+
+                    # on fait une boucle jusqu'à ce qu'on trouve la position actuelle. Si la distance augmente on sort de la boucle.
+                    # on initialise la distance entre le starting_point et la position actuelle
+                    distance = np.sqrt(np.power(starting_point["x"] - nrn2["meta"]["center"]["x"],2)+np.power(starting_point["y"] - nrn2["meta"]["center"]["y"],2))
+                    print("distance initiale:", distance)
+                    min_distance = copy.deepcopy(distance)
+
+                    # on initialise le new_point
+                    new_point = copy.deepcopy(starting_point)
+                    # compteur de boucle
+                    i = 0
+                    # boucle qui s'arrête si la distance augmente ou si elle devient inférieure à 1
+                    while distance == min_distance :
+                        # détermination du new_point
+                        new_point = {
+                            "x": new_point["x"] + basis_vector["x"],
+                            "y": new_point["y"] + basis_vector["y"]
+                        }
+                        # calcul de la distance entre le new_point et le nrn2["meta"]["center"]
+                        distance = np.sqrt(np.power(new_point["x"] - nrn2["meta"]["center"]["x"],2)+np.power(new_point["y"] - nrn2["meta"]["center"]["y"],2))
+                        # on incrémente le compteur de boucle
+                        i += 1
+                        # on M.A.J. la distance minimale
+                        if distance < min_distance:
+                            min_distance = copy.deepcopy(distance)
+                        if distance < 1:
+                            break
+                        if i > 100:
+                            break
+
+                    # on affiche le nombre de boucle et le new_point
+                    print("nombre de boucle:", i, ", new_point:", new_point, ", center", nrn2["meta"]["center"])
+                    print("* distance finale:", distance, ', (min_distance:', min_distance, ')')
                     
+                    pos_predict = []
+                    # si la distance est nulle, on peut faire une prédiction
+                    if distance < 1:
+                        nrn3_pos_predict = {
+                            "x": np.floor(new_point["x"] + basis_vector["x"]),
+                            "y": np.floor(new_point["y"] + basis_vector["y"])
+                        }
+                        pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                        nrn3_pos_predict = {
+                            "x": np.round(new_point["x"] + basis_vector["x"]),
+                            "y": np.round(new_point["y"] + basis_vector["y"])
+                        }
+                        pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                        nrn3_pos_predict = {
+                            "x": np.ceil(new_point["x"] + basis_vector["x"]),
+                            "y": np.ceil(new_point["y"] + basis_vector["y"])
+                        }
+                        pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                        nrn3_pos_predict = {
+                            "x": np.floor(new_point["x"] + 1.5 * basis_vector["x"]),
+                            "y": np.floor(new_point["y"] + 1.5 * basis_vector["y"])
+                        }
+                        pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                        nrn3_pos_predict = {
+                            "x": np.round(new_point["x"] + 1.5 * basis_vector["x"]),
+                            "y": np.round(new_point["y"] + 1.5 * basis_vector["y"])
+                        }
+                        pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                        nrn3_pos_predict = {
+                            "x": np.ceil(new_point["x"] + 1.5 * basis_vector["x"]),
+                            "y": np.ceil(new_point["y"] + 1.5 * basis_vector["y"])
+                        }
+                        pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                    else:
+                        nrn3_pos_predict = {
+                            "x": np.floor(new_point["x"]),
+                            "y": np.floor(new_point["y"])
+                        }
+                        pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                        nrn3_pos_predict = {
+                            "x": np.round(new_point["x"]),
+                            "y": np.round(new_point["y"])
+                        }
+                        pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                        new_point = {
+                            "x": new_point["x"] - basis_vector["x"],
+                            "y": new_point["y"] - basis_vector["y"]
+                        }
+                    
+                    # alternative 1
+                    nrn3_pos_predict = {
+                        "x": np.floor(pos_predict[0]["x"] - basis_vector["y"]),
+                        "y": np.floor(pos_predict[0]["y"] + basis_vector["x"])
+                    }
+                    pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                    nrn3_pos_predict = {
+                        "x": np.round(pos_predict[0]["x"] - basis_vector["y"]),
+                        "y": np.round(pos_predict[0]["y"] + basis_vector["x"])
+                    }
+                    pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                    # alternative 2
+                    nrn3_pos_predict = {
+                        "x": np.floor(pos_predict[0]["x"] + basis_vector["y"]),
+                        "y": np.floor(pos_predict[0]["y"] - basis_vector["x"])
+                    }
+                    pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                    nrn3_pos_predict = {
+                        "x": np.round(pos_predict[0]["x"] + basis_vector["y"]),
+                        "y": np.round(pos_predict[0]["y"] - basis_vector["x"])
+                    }
+                    pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                    
+                    print("LINE pos_predict:", pos_predict)
 
-            # print("neurone",nb,"list pre_synaptique")
-            # print(self.nrn_tls.lst_nrns[nb].neuron["DbConnectivity"]["pre_synaptique"])
+                    ###############################################
+                    # Comparaison des pixels alentours avec les pixels prédits
+                    ###############################################
+                    tmp_new_pixels_detected = {}
+                    tmp_angle_min = -999
+                    is_found = False
+                    orientation = None
 
-        # détermination des connexions latérales
-        for nrn_pos in range (nb_min, self.nrn_tls.nb_nrns):
-            nrn2 = self.nrn_tls.lst_nrns[nrn_pos].neuron
-            # position du centre du neurone
-            x = nrn2["meta"]["center"]["x"]
-            y = nrn2["meta"]["center"]["y"]
+                    for coord_pixel in lst_nrn_pxl_pos:
+                        test_x = coord_pixel["x"]
+                        test_y = coord_pixel["y"]
+                        for nrn3_pos_predicted in pos_predict:
+                            if abs(nrn3_pos_predicted["x"] - test_x) < 1 and abs(nrn3_pos_predicted["y"] - test_y) < 1:
+                                is_found = True
+                                
+                                tmp_orientation = {
+                                    "x": test_x - new_point["x"],
+                                    "y": test_y - new_point["y"]
+                                }
+                                '''
+                                orientation = {
+                                    "x": test_x - nrn2["meta"]["center"]["x"],
+                                    "y": test_y - nrn2["meta"]["center"]["y"]
+                                }
+                                '''
+                                # calcul l'angle entre l'orientation et le vecteur de base
+                                tmp_angle = np.abs(self.nrn_tls.calc_angle(tmp_orientation, basis_vector))
 
-            # sub_pxl_map contient les identifiants de chaque neurone pixel sur une carte nrnl_map
-            sub_pxl_map = self.nrn_l2_map[y-1:y+2, x-1:x+2]
-            nrn2["DbConnectivity"]["lateral_connexion"] = list(set(sub_pxl_map.ravel().astype(int)))
-            for i_pos in range(len(nrn2["DbConnectivity"]["lateral_connexion"])-1,-1,-1):
-                if nrn2["DbConnectivity"]["lateral_connexion"][i_pos] == 0 :
-                    nrn2["DbConnectivity"]["lateral_connexion"].pop(i_pos)
-                else:
-                    self.nrn_tls.add_edge(nrn2["_id"],nrn2["DbConnectivity"]["lateral_connexion"][i_pos])
-                    self.nrn_tls.increment_weight(nrn2,nrn2["DbConnectivity"]["lateral_connexion"][i_pos])
+                                if tmp_angle_min == -999 or tmp_angle < tmp_angle_min:
+                                    orientation = copy.deepcopy(tmp_orientation)
+                                    tmp_angle_min = tmp_angle
+                                    tmp_new_pixels_detected = {
+                                        "x": test_x,
+                                        "y": test_y,
+                                        "nb_iteration": nrn3["meta"]["line"]["nb_iteration"],
+                                        "neuron_type": nrn3["type"],
+                                        "distance": copy.deepcopy(min_distance),
+                                        "angle": copy.deepcopy(tmp_angle)
+                                    }
+                                    print("__>")
+                                    print("tmp_new_pixels_detected", tmp_new_pixels_detected)
+                                    print("nrn3 pos found", nrn3_pos_predicted)
+                                    print("angle", tmp_angle)
+                                    print("<__")
+                                
+                    if is_found:
+                        new_pixels_detected.append(copy.deepcopy(tmp_new_pixels_detected))
 
-            # print("neurone",nrn2["_id"],"list lateral_connexion")
-            # print(nrn2["DbConnectivity"]["lateral_connexion"])
-            # Ajouter ici le calcul des angles avec chaque
-            nrn2["DbConnectivity"]["angles"] = {}
-            vector_1 = nrn2["meta"]["glbl_prm"]["u_axis"]
-            for i_pos in range(len(nrn2["DbConnectivity"]["lateral_connexion"])-1,-1,-1):
-                id_nrn = nrn2["DbConnectivity"]["lateral_connexion"][i_pos]
-                if nrn2["_id"] != id_nrn:
-                    nrn_2 = self.nrn_tls.get_neuron_from_id(id_nrn)
-                    vector_2 = nrn_2["meta"]["glbl_prm"]["u_axis"]
-                    nrn2["DbConnectivity"]["angles"][id_nrn] = self.nrn_tls.calc_angle(vector_1, vector_2)
+                    if is_found and orientation is not None and min_distance < 1.5:
+                        # tmp_lst_nrn3_found.append(nrn3["_id"])
+                        # normalisation de l'orientation
+                        orientation["x"] = orientation["x"] / np.sqrt(np.power(orientation["x"],2)+np.power(orientation["y"],2))
+                        orientation["y"] = orientation["y"] / np.sqrt(np.power(orientation["x"],2)+np.power(orientation["y"],2))
+
+                        # nrn3["meta"]["line"]["nb_iteration"] += 1
+                        nrn3["meta"]["pending_nb_iteration"] += 1
+                        print("nrn3 ligne trouvé !!!!!!!!!!!!!")
+                        # je vais faire une moyenne itérative avec la basis_vector du neurone 3
+                        # je récupère le basis_vector du neurone 3
+                        print("basis_vector AVANT", nrn3["meta"]["line"]["basis_vector"])
+                        tmp_bsvct = copy.deepcopy(nrn3["meta"]["line"]["basis_vector"])
+                        # nombre d'itération
+                        n = nrn3["meta"]["line"]["nb_iteration"] + 1
+                        # je calcule la moyenne itérative
+
+                        nrn3_basis_vector_new_tmp = {
+                            "x": self.nrn_tls.FctIterMean(n, orientation["x"], nrn3["meta"]["line"]["basis_vector"]["x"] ),
+                            "y": self.nrn_tls.FctIterMean(n, orientation["y"], nrn3["meta"]["line"]["basis_vector"]["y"] )
+                        }
+                        # nrn3["meta"]["line"]["basis_vector"]["x"] = self.nrn_tls.FctIterMean(n, orientation["x"], nrn3["meta"]["line"]["basis_vector"]["x"] ) 
+                        # nrn3["meta"]["line"]["basis_vector"]["y"] = self.nrn_tls.FctIterMean(n, orientation["y"], nrn3["meta"]["line"]["basis_vector"]["y"] )
+
+                        print("--> nouvelle orientation", orientation)
+                        # calc_angle de l'ancien et du nouveau basis_vector
+                        tmp_angle_bsvct = self.nrn_tls.calc_angle(tmp_bsvct, nrn3_basis_vector_new_tmp)
+                        print("basis_vector APRES", nrn3["meta"]["line"]["basis_vector"], "(angle avant et après:", tmp_angle_bsvct, ")")
+                        
+                        # calculer l'angle max possible             
+                        tmp_angle_max = 2 * np.arccos(n/np.sqrt(np.power(n,2)+np.power(1,2)))
+                        print("tmp_angle_max ", tmp_angle_max)
+                        # si tmp_angle_max >= tmp_angle_bsvct + nrn3["meta"]["cumulated_angle"] alors on valide la ligne
+                        if tmp_angle_max >= tmp_angle_bsvct + nrn3["meta"]["cumulated_angle"]:
+                            nrn3["meta"]["line"]["nb_iteration"] += 1
+                            nrn3["meta"]["cumulated_angle"] += tmp_angle_bsvct
+                            # ajout de l'id du nrn2 dans presynaptic DbConnectivity': {'pre_synaptique
+                            nrn3["DbConnectivity"]["pre_synaptique"].append(nrn2["_id"])
+                            # ajout de l'id du nrn3 dans postsynaptic DbConnectivity': {'post_synaptique
+                            nrn2["DbConnectivity"]["post_synaptique"].append(nrn3["_id"])
+                            # sauvegarde du basis_vector
+                            nrn3["meta"]["line"]["basis_vector"] = nrn3_basis_vector_new_tmp
+                            print("angle OK pour sauvegarder ")
+                            # finalement on sauvegarde pas
+                            nrn3_not_found = False
+                    else:
+                        nrn3["meta"]["nb_points_aligned"] = 0
+                        nrn3["meta"]["pending_nb_iteration"] += 1
+
+                #                  ____                  _ 
+                #    _ _  _ _ _ _ |__ /  __ ___ _  _ _ _| |__  ___ ___
+                #   | ' \| '_| ' \ |_ \ / _/ _ \ || | '_| '_ \/ -_|_-<
+                #   |_||_|_| |_||_|___/ \__\___/\_,_|_| |_.__/\___/__/
+                #                                       
+                # 
+                elif nrn3["type"] == "sentive_vision_curve":
+                    print("\n******************")
+                    print("nrn3", nrn3["_id"], "est une courbe")
+                    print(nrn3["meta"]["curve"]["basis_vector"], "basis_vector")
+                    print("nrn3", nrn3["_id"], "nb_iteration", nrn3["meta"]["curve"]["nb_iteration"])
+                    # angle
+                    print("nrn3", nrn3["_id"], "angle", nrn3["meta"]["curve"]["angle"])
+                            
+                    if nrn3["meta"]["curve"]["nb_iteration"] == 1:
+                        # je récupère le vecteur d'orientation du neurone 2
+                        orientation = nrn2["meta"]["orientation"]
+                        # je récupère le basis_vector du neurone 3
+                        basis_vector = nrn3["meta"]["curve"]["basis_vector"]
+                        # je calcule l'angle entre le basis_vector et l'orientation
+                        angle = self.nrn_tls.calc_angle(basis_vector, orientation)
+                        print("found angle", angle)
+                        # je sauvegarde la valeur d'angle dans nrn3
+                        nrn3["meta"]["curve"]["angle"] = angle
+                        #  je met le compteur nb_d'itération à 2.
+                        nrn3["meta"]["curve"]["nb_iteration"] = 2
+                        nrn3["meta"]["pending_nb_iteration"] += 1
+                        # Je sauvegarde le vecteur d'orientation de nrn2 dans last_vector.
+                        nrn3["meta"]["curve"]["last_vector"] = nrn2["meta"]["orientation"]
+                        nrn3_not_found = False
+                        nrn3_curve_not_found = False
+                        # ajout de l'id du nrn2 dans presynaptic DbConnectivity': {'pre_synaptique
+                        nrn3["DbConnectivity"]["pre_synaptique"].append(nrn2["_id"])
+                        # ajout de l'id du nrn3 dans postsynaptic DbConnectivity': {'post_synaptique
+                        nrn2["DbConnectivity"]["post_synaptique"].append(nrn3["_id"])
+
+                    # Si le nombre d'itération est > 1  alors je calcule l'angle entre le basis_vector et l'angle d'orientation du nrn2,
+                    elif nrn3["meta"]["curve"]["nb_iteration"] >= 2 and nrn3["meta"]["pending_nb_iteration"] == nrn3["meta"]["curve"]["nb_iteration"]:
+                        nrn3["meta"]["pending_nb_iteration"] += 1
+
+                        # on récupère le starting_point du neurone 3
+                        starting_point = nrn3["meta"]["curve"]["starting_point"]
+
+                        # on récupère le basis_vector du neurone 3
+                        basis_vector = copy.deepcopy(nrn3["meta"]["curve"]["basis_vector"])
+
+                        # on fait une boucle jusqu'à ce qu'on trouve la position actuelle. Si la distance augmente on sort de la boucle.
+                        # on initialise la distance entre le starting_point et la position actuelle
+                        distance = np.sqrt(np.power(starting_point["x"] - nrn2["meta"]["center"]["x"],2)+np.power(starting_point["y"] - nrn2["meta"]["center"]["y"],2))
+                        print("distance initiale:", distance)
+                        min_distance = copy.deepcopy(distance)
+
+                        # on initialise le new_point
+                        new_point = copy.deepcopy(starting_point)
+                        # compteur de boucle
+                        i = 0
+                        # boucle qui s'arrête si la distance augmente ou si elle devient inférieure à 1
+                        while distance == min_distance :
+                            if i > 0:
+                                # rotation du basis vector (pas tout de suite)
+                                basis_vector = self.nrn_tls.draw_rotate_vector(basis_vector, nrn3["meta"]["curve"]["angle"])
+                                print("new direction basis vector", basis_vector)
+
+                            # détermination du new_point
+                            new_point = {
+                                "x": new_point["x"] + basis_vector["x"],
+                                "y": new_point["y"] + basis_vector["y"]
+                            }
+                            print("new point", new_point)
+
+                            # calcul de la distance entre le new_point et le nrn2["meta"]["center"]
+                            distance = np.sqrt(np.power(new_point["x"] - nrn2["meta"]["center"]["x"],2)+np.power(new_point["y"] - nrn2["meta"]["center"]["y"],2))
+                            print("distance:", distance)
+                            # on incrémente le compteur de boucle
+                            i += 1
+                            # on M.A.J. la distance minimale
+                            if distance < min_distance:
+                                min_distance = copy.deepcopy(distance)
+                            if distance < 1:
+                                break
+                            if i > 100:
+                                break
 
 
-        self.nrn_tls.nb_2_1st_layers = len(self.nrn_tls.lst_nrns)
-        print("nb neurones couche 2 :", nb - nb_min)
-        print("nombre de neurones couche 1 & 2:",self.nrn_tls.nb_2_1st_layers)
-        # print("*"*40)
+                        ###############################################
+                        # on affiche le nombre de boucle et le new_point
+                        print("CURVED nombre de boucles:", i, ", new_point:", new_point, ", center", nrn2["meta"]["center"])
+                        print("* distance finale:", distance, ', (min_distance:', min_distance, ')')
+                        
 
-    def couche_3(self):
-        '''
-            Cette couche détermine les angles de rotation du trait en chaque point.
-        '''
-        # création d'une nouvelle couche
-        self.nrn_tls.new_layer()
+                        #  |)   _  |. _|-.  ,_
+                        #  | |`(/_(||(_|_|()||
+                        # 
+                        
+                        check_predict = True
+                        while check_predict:
+                            pos_predict = []
+                            # si la distance est nulle, on peut faire une prédiction
+                            if distance < 1:
+                                vector_predicted = self.nrn_tls.draw_rotate_vector(basis_vector, nrn3["meta"]["curve"]["angle"])
+                                nrn3_pos_predict = {
+                                    "x": np.floor(new_point["x"] + vector_predicted["x"]),
+                                    "y": np.floor(new_point["y"] + vector_predicted["y"])
+                                }
+                                # calcule entre la position prédite et le nrn2["meta"]["center"]
+                                distance = np.sqrt(np.power(nrn3_pos_predict["x"] - nrn2["meta"]["center"]["x"],2)+np.power(nrn3_pos_predict["y"] - nrn2["meta"]["center"]["y"],2))
+                                nrn3_pos_predict = self.test_pos_predict_on_3x3_grid(nrn2, nrn3_pos_predict)
+                                pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                                nrn3_pos_predict = {
+                                    "x": np.round(new_point["x"] + vector_predicted["x"]),
+                                    "y": np.round(new_point["y"] + vector_predicted["y"])
+                                }
+                                nrn3_pos_predict = self.test_pos_predict_on_3x3_grid(nrn2, nrn3_pos_predict)
+                                pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                                nrn3_pos_predict = {
+                                    "x": np.ceil(new_point["x"] + vector_predicted["x"]),
+                                    "y": np.ceil(new_point["y"] + vector_predicted["y"])
+                                }
+                                nrn3_pos_predict = self.test_pos_predict_on_3x3_grid(nrn2, nrn3_pos_predict)
+                                pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                                nrn3_pos_predict = {
+                                    "x": np.floor(new_point["x"] + 1.5 * vector_predicted["x"]),
+                                    "y": np.floor(new_point["y"] + 1.5 * vector_predicted["y"])
+                                }
+                                nrn3_pos_predict = self.test_pos_predict_on_3x3_grid(nrn2, nrn3_pos_predict)
+                                pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                                nrn3_pos_predict = {
+                                    "x": np.round(new_point["x"] + 1.5 * vector_predicted["x"]),
+                                    "y": np.round(new_point["y"] + 1.5 * vector_predicted["y"])
+                                }
+                                nrn3_pos_predict = self.test_pos_predict_on_3x3_grid(nrn2, nrn3_pos_predict)
+                                pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                                nrn3_pos_predict = {
+                                    "x": np.ceil(new_point["x"] + 1.5 * vector_predicted["x"]),
+                                    "y": np.ceil(new_point["y"] + 1.5 * vector_predicted["y"])
+                                }
+                                nrn3_pos_predict = self.test_pos_predict_on_3x3_grid(nrn2, nrn3_pos_predict)
+                                pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                            else: # sinon on fait une prédiction sur la position du new_point (dépassement de la position de distance minimale)
+                                nrn3_pos_predict = {
+                                    "x": np.floor(new_point["x"]),
+                                    "y": np.floor(new_point["y"])
+                                }
+                                nrn3_pos_predict = self.test_pos_predict_on_3x3_grid(nrn2, nrn3_pos_predict)
+                                pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                                nrn3_pos_predict = {
+                                    "x": np.round(new_point["x"]),
+                                    "y": np.round(new_point["y"])
+                                }
+                                nrn3_pos_predict = self.test_pos_predict_on_3x3_grid(nrn2, nrn3_pos_predict)
+                                pos_predict.append(copy.deepcopy(nrn3_pos_predict))
 
-        #création d'un nouveau neurone
-        nb  = self.nrn_tls.add_new_nrn("sentive_arc_neuron")
-        self.nb_min_nrn3 = nb
-        lst_nrn3_pos = [nb]
-        lst_nrn3 = {}
-        nrn3 = self.nrn_tls.lst_nrns[nb].neuron
-        lst_nrn3[nrn3['_id']] = nrn3
-        prevs_nrn3 = [nrn3]
+                                # Je recule d'un élément car dans ce cas, cela signifie qu'on a dépassé la position de distance minimale
+                                new_point = {
+                                    "x": new_point["x"] - basis_vector["x"],
+                                    "y": new_point["y"] - basis_vector["y"]
+                                }
+                                vector_predicted = copy.deepcopy(basis_vector)
+                                basis_vector = self.nrn_tls.draw_rotate_vector(basis_vector, -nrn3["meta"]["curve"]["angle"])
+                            
+                            # alternative 1
+                            nrn3_pos_predict = {
+                                "x": np.floor(pos_predict[0]["x"] - vector_predicted["y"]),
+                                "y": np.floor(pos_predict[0]["y"] + vector_predicted["x"])
+                            }
+                            nrn3_pos_predict = self.test_pos_predict_on_3x3_grid(nrn2, nrn3_pos_predict)
+                            pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                            nrn3_pos_predict = {
+                                "x": np.round(pos_predict[0]["x"] - vector_predicted["y"]),
+                                "y": np.round(pos_predict[0]["y"] + vector_predicted["x"])
+                            }
+                            nrn3_pos_predict = self.test_pos_predict_on_3x3_grid(nrn2, nrn3_pos_predict)
+                            pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                            # alternative 2
+                            nrn3_pos_predict = {
+                                "x": np.floor(pos_predict[0]["x"] + vector_predicted["y"]),
+                                "y": np.floor(pos_predict[0]["y"] - vector_predicted["x"])
+                            }
+                            nrn3_pos_predict = self.test_pos_predict_on_3x3_grid(nrn2, nrn3_pos_predict)
+                            pos_predict.append(copy.deepcopy(nrn3_pos_predict))
+                            nrn3_pos_predict = {
+                                "x": np.round(pos_predict[0]["x"] + vector_predicted["y"]),
+                                "y": np.round(pos_predict[0]["y"] - vector_predicted["x"])
+                            }
+                            nrn3_pos_predict = self.test_pos_predict_on_3x3_grid(nrn2, nrn3_pos_predict)
+                            pos_predict.append(copy.deepcopy(nrn3_pos_predict))
 
-        # initialisation du panier contenant la liste de tous les neurones 2 restants
-        remaining_nrn2_id = {}
-        i = 0
-        # Pour cela je fais une boucle sur tous les nrn2 et je les copie dans mon panier
-        for nrn in self.nrn_tls.lst_nrns:
-            if nrn.neuron["layer_id"] == 2:
-                nrn2 = nrn.neuron
-                if i==0: 
-                    crnt_nrn = copy.deepcopy(nrn2)
-                else:
-                    remaining_nrn2_id[nrn2["_id"]] = nrn2
-                i += 1
-        # Le premier nrn3 est par défaut connecté au premier nrn2 de la liste
-        nrn3["DbConnectivity"]["pre_synaptique"].append(crnt_nrn["_id"])
-        # Les nrn2 possèdent des "glbl_prm" qui donnent le cg des pixels et l'orientation.
-        nrn3["meta"]["last_nrn2"] = {
-            "glbl_prm" : crnt_nrn["meta"]["glbl_prm"],
-            "vecteur_deplacement" : np.nan
-        }
-        max_angle = 0
+                            print("CURVE vector_predicted", vector_predicted)
+                            print("CURVE pos_predict:", pos_predict)
+                            print("========================")
+                            print("CURVE nrn3 id",nrn3["_id"] , "CURVE position", nrn3["meta"]["curve"]["nb_iteration"], "->", nrn3["meta"]["curve"]["nb_iteration"] + 1)
+                            print("========================")
 
-        # charge la liste des précédents par défaut
-        all_prevs = [[crnt_nrn]]
+                            
+                            ###############################################################
+                            # comparer les positions prédites avec chacune des positions des neurones pixels dans la liste lst_nrn_pxl_pos
+                            tmp_new_pixels_detected = {}
+                            tmp_angle_min = -999
+                            tmp_angle_min_alt2 = -999
+                            test_angle_min = -999
+                            is_found = False
+                            orientation = None
+                            for coord_pixel in lst_nrn_pxl_pos:
+                                test_x = coord_pixel["x"]
+                                test_y = coord_pixel["y"]
+                                for nrn3_pos_predicted in pos_predict:
+                                    if abs(nrn3_pos_predicted["x"] - test_x) < 1 and abs(nrn3_pos_predicted["y"] - test_y) < 1:
+                                        is_found = True
 
-        crt_branch = 0
-        # Tant qu'il existe des précédent on peut potentiellement continuer
-        while len(all_prevs[crt_branch])>0:
-            nexts_list = {}
-            # calcule les suivant à partir de la liste DbConnectivity.angles
-            # puisque cette liste donne tous les neurones avec qui ce nrn2 est connecté
-            for nrn in all_prevs[crt_branch]:
-                for nrn_id in nrn["DbConnectivity"]["angles"].keys():
-                    try:
-                        nexts_list[nrn_id] = remaining_nrn2_id[nrn_id]
-                        remaining_nrn2_id.pop(nrn_id)
-                    except:
-                        pass
-            # Donc on obtient une liste de tous les suivants possibles à partir des neurones contenus dans all_prevs
-            # si cette liste est vide alors on arrête
-            if len(nexts_list)==0:
-                print("nothing more to do")
-                break
-            # Variables permettant de stocker les différentes branches
-            branchs = []
-            branchs.append({})
-            # on sélectionne le 1er neurone de la liste des suivants, il devient le *neurone en court* `crn_nrn`
-            crn_nrn = list(nexts_list.values())[0]
-            # je charge ce neurone en court comme premier de ma première branche
-            branchs[0][crn_nrn["_id"]] = crn_nrn
-            prev_id = crn_nrn["_id"]
-
-            # variable qui stocke quelle branche on se trouve. C'est simplement un chiffre entier de 0 à n
-            crn_brnch_id = 0
-            
-            # Comme on a chargé le prochain neurone, il faut le supprimer de la liste des suivant pour les prochaines fois
-            nexts_list.pop(crn_nrn["_id"])
-            # On boucle sur chaque suivants de la liste
-            while len(nexts_list)>0:
-                # On met dans la même branche tous les neurones connectés entre eux
-                for nrn_id in crn_nrn["DbConnectivity"]["angles"].keys():
-                    try:
-                        # ici avant d'ajouter mon neurone à la branche je vérifie son angle
-
-                        tmp_angle = np.abs(nexts_list[nrn_id]["DbConnectivity"]["angles"][prev_id])
-                        if tmp_angle > np.pi/2:
-                            tmp_angle = np.pi - tmp_angle
-                        if tmp_angle>= 1:
-                            print("**************************************************")
-                            print("angle avec le neurone déjà présent dans la branche",prev_id,"et actuel id:",nrn_id)
-                            print("angle brut = ", nexts_list[nrn_id]["DbConnectivity"]["angles"][prev_id])
-                            print("angle ajusté = ",tmp_angle)
-                            print("**************************************************")
-                            #continue
-                        else:
-                            branchs[crn_brnch_id][nrn_id] = nexts_list[nrn_id]
-                            nexts_list.pop(nrn_id)
-                    except:
-                        #print("nothing to be done")
-                        pass
-                # Si à la fin du premier passage il reste des neurones
-                # ça veut dire que ces neurones ne sont pas connectés avec les autres d'avant
-                # on crée donc une seconde branche pour eux
-                if len(nexts_list)>0:
-                    crn_brnch_id += 1
-                    branchs.append({})
-                    crn_nrn = list(nexts_list.values())[0]
-                    prev_id = crn_nrn["_id"]
-                    branchs[crn_brnch_id][crn_nrn["_id"]] = crn_nrn
-                    nexts_list.pop(crn_nrn["_id"])
-
-                # et ainsi de suite tant qu'il ne reste plus de neurones dans la liste des suivants.
-                # on aura créé une variable **branchs** qui contient des neurones de la 2 eme couche organisés en différentes branches.
-
-            # Cette variable va stocker tous les neurones de la 3eme couche créés maintenant
-            # cela va permettre de savoir qui sont les neurones 3 du niveau précédent quand on sera au niveau suivant
-            # pour l'instant c'est juste un tableau qui permet de stocker ces neurones créés juste après
-            new_prevs_nrn3 = []
-            
-            # réinitialise les branchs
-            all_prevs=[]
-            all_prev_nrn2s = []
-            # print("number of branches is", len(branchs))
-            for i in range(len(branchs)):
-                all_prevs.append([])
-                all_prev_nrn2s.append([])                   
-
-            # boucle sur chaque branche il y trouve une structure qui contient tous les neurones 2 de la branche
-            for strc_nrn2 in branchs:
-
-                # boucle sur tous les neurones 3 déjà créés
-                # pour voir si un de ces neurones 3 est compatible avec les neurones 2 de la branche.
-                for a_nrn3 in lst_nrn3.values():
-                    # comparaison des vecteurs d'orientation
-                    for nrn2 in strc_nrn2.values():
-                        # vecteur d'orientation du nrn2:
-                        vector_1 = nrn2["meta"]["glbl_prm"]["u_axis"]
-                        # vecteur d'orientation du nrn3
-                        vector_2 = a_nrn3["meta"]["last_nrn2"]["glbl_prm"]["u_axis"]
-                        result_angle = np.abs(self.nrn_tls.calc_angle(vector_1, vector_2))
-                        if result_angle>(np.pi/2): 
-                            result_angle -= np.pi/2
-
-                    pass
-                
-                # Création d'un nouveau neurone 3 qui va être connecté à tous les neurones de la branche
-                nb  = self.nrn_tls.add_new_nrn()
-                lst_nrn3_pos.append(nb)
-                nrn3 = self.nrn_tls.lst_nrns[nb].neuron
-                nrn3["DbConnectivity"]["pre_synaptique"].extend(list(strc_nrn2.keys()))
-
-                pxl_coords = set()
-                # Pour chaque nrn 2 j'update la matrice des pixels
-                for nrn2 in strc_nrn2.values():
-                    pxl_coords.update(set(nrn2["meta"]["pxl_coord"]))
-                    all_prev_nrn2s[crt_branch].append(nrn2["_id"])
-
-                # ce qui me permet de calculer le vecteur directeur
-                nrn3["meta"]["pxl_coord"] = list(pxl_coords)
-                pca = PCA(n_components=1)
-                pca.fit(nrn3["meta"]["pxl_coord"])
-
-                nrn3["meta"]["glbl_prm"] = {
-                                                "cg":{  "x":np.mean(np.array(list(pxl_coords))[:,0]),
-                                                        "y":np.mean(np.array(list(pxl_coords))[:,1])},
-                                                "u_axis":{
-                                                        "x":pca.components_[0][0],
-                                                        "y":pca.components_[0][1]}
+                                        tmp_orientation = {
+                                            "x": test_x - new_point["x"],
+                                            "y": test_y - new_point["y"]
+                                        }
+                                        tmp_orientation_alt2 = {
+                                            "x": test_x - nrn2["meta"]["center"]["x"],
+                                            "y": test_y - nrn2["meta"]["center"]["y"]
+                                        }
+                                        tmp_angle = self.nrn_tls.calc_angle(basis_vector, tmp_orientation)
+                                        test_angle = np.abs(self.nrn_tls.calc_angle(vector_predicted, tmp_orientation))
+                                        tmp_angle_alt2 = self.nrn_tls.calc_angle(basis_vector, tmp_orientation_alt2)
+                                        print("CURVE tmp_orientation", tmp_orientation)
+                                        print("CURVE vector_predicted", vector_predicted)
+                                        print("CURVE tmp_angle", tmp_angle)
+                                        print("CURVE test_angle", test_angle)
+                                        if test_angle_min == -999 or test_angle < test_angle_min:
+                                            test_angle_min = test_angle
+                                            orientation = copy.deepcopy(tmp_orientation)
+                                            tmp_angle_min = tmp_angle
+                                            tmp_angle_min_alt2 = tmp_angle_alt2
+                                            tmp_new_pixels_detected = {
+                                                "x": test_x,
+                                                "y": test_y,
+                                                "nb_iteration": nrn3["meta"]["curve"]["nb_iteration"],
+                                                "neuron_type": nrn3["type"],
+                                                "distance" : copy.deepcopy(min_distance),
+                                                "angle" : self.nrn_tls.calc_angle(tmp_orientation, vector_predicted)
                                             }
-                nrn3["meta"]["vecteur_deplacement"] = {
-                                                        "x": nrn3["meta"]["glbl_prm"]["cg"]["x"] - prevs_nrn3[0]["meta"]["glbl_prm"]["cg"]["x"],
-                                                        "y": nrn3["meta"]["glbl_prm"]["cg"]["y"] - prevs_nrn3[0]["meta"]["glbl_prm"]["cg"]["y"]
-                                                    }
-                vector_1 = nrn3["meta"]["glbl_prm"]["u_axis"]
-                vector_2 = nrn3["meta"]["vecteur_deplacement"]
-                result_angle = np.abs(self.nrn_tls.calc_angle(vector_1, vector_2))
-                if result_angle>(np.pi/2):
-                    nrn3["meta"]["glbl_prm"]["u_axis"]["x"] = - nrn3["meta"]["glbl_prm"]["u_axis"]["x"]
-                    nrn3["meta"]["glbl_prm"]["u_axis"]["y"] = - nrn3["meta"]["glbl_prm"]["u_axis"]["y"]
+                                            print("__>")
+                                            print("CURVED tmp_new_pixels_detected", tmp_new_pixels_detected)
+                                            print("nrn3 pos found", nrn3_pos_predicted)
+                                            print("angle", tmp_angle)
+                                            print("<__")
+                            if is_found:
+                                new_pixels_detected.append(copy.deepcopy(tmp_new_pixels_detected))
+                                check_predict = False
+                            else:
+                                if distance < 1:
+                                    new_point = {
+                                        "x": new_point["x"] + vector_predicted["x"],
+                                        "y": new_point["y"] + vector_predicted["y"]
+                                    }
+                                    # calcule entre la position prédite et le nrn2["meta"]["center"]
+                                    distance = np.sqrt(np.power(nrn3_pos_predict["x"] - nrn2["meta"]["center"]["x"],2)+np.power(nrn3_pos_predict["y"] - nrn2["meta"]["center"]["y"],2))
+                                    print("check_predict distance:", distance, "min_distance:", min_distance, "new_point:", new_point)
+                                    if distance < min_distance:
+                                        min_distance = copy.deepcopy(distance)
+                                        check_predict = True
+                                    else:
+                                        check_predict = False
+                                else:
+                                    check_predict = False
 
-                # Check if the previous nrn3 has a vector in the right direction
+                        if is_found and orientation is not None and min_distance < 1.5:
+                            tmp_lst_nrn3_found.append(nrn3["_id"])
+                            nrn3_not_found = False
+                            nrn3_curve_not_found = False
+                            print("Prédiction nrn3 CURVE", nrn3["_id"], "TROUVé")
+                            print("************************************")
+                            nrn3["meta"]["curve"]["nb_iteration"] += 1
+                            # mettre à jour l'angle
+                            # angle = self.nrn_tls.calc_angle(nrn3["meta"]["curve"]["last_vector"], orientation)
+                            
+                            print("vecteur d'orientation Choisi", orientation)
+                            print("nouvel angle mesuré", tmp_angle_min, "(alt2 centre:", tmp_angle_min_alt2, ")")
+                            angle = self.nrn_tls.FctIterMean(nrn3["meta"]["curve"]["nb_iteration"], tmp_angle_min, nrn3["meta"]["curve"]["angle"])
+                            print("nb itérations:", nrn3["meta"]["curve"]["nb_iteration"])
+                            print("=== angle M.à.J.", angle, "===")
+                            # je sauvegarde la valeur d'angle dans nrn3
+                            nrn3["meta"]["curve"]["angle"] = angle
+                            # Je sauvegarde le vecteur d'orientation de nrn2 dans last_vector.
+                            nrn3["meta"]["curve"]["last_vector"] = orientation
+                            # ajout de l'id du nrn2 dans presynaptic DbConnectivity': {'pre_synaptique
+                            nrn3["DbConnectivity"]["pre_synaptique"].append(nrn2["_id"])
+                            # ajout de l'id du nrn3 dans postsynaptic DbConnectivity': {'post_synaptique
+                            nrn2["DbConnectivity"]["post_synaptique"].append(nrn3["_id"])
 
-                if not "vecteur_deplacement" in prevs_nrn3[0]["meta"]:
-                    vector_1 = prevs_nrn3[0]["meta"]["glbl_prm"]["u_axis"]
-                    result_angle = np.abs(self.nrn_tls.calc_angle(vector_1, vector_2))
-                    if result_angle>(np.pi/2):
-                        prevs_nrn3[0]["meta"]["glbl_prm"]["u_axis"]["x"] = - prevs_nrn3[0]["meta"]["glbl_prm"]["u_axis"]["x"]
-                        prevs_nrn3[0]["meta"]["glbl_prm"]["u_axis"]["y"] = - prevs_nrn3[0]["meta"]["glbl_prm"]["u_axis"]["y"]
+            # si on a pas trouvé de neurone de la couche 3 valide on en crée un nouveau
+            # un nrn ligne
+            if nrn3_not_found:
+                # je crée un couple de neurone de la couche 3, un neurone ligne et un neurone courbe
+                # le neurone courbe :
+                lst_nrn3 = self.create_new_nrn3(lst_nrn3, nrn2)
+                new_nrn3_curve = self.nrn_tls.lst_nrns[lst_nrn3[-1]].neuron
+                tmp_dx = barycentre[0] - 1
+                tmp_dy = barycentre[1] - 1
                 
-                nrn3["meta"]["angles"] = {}
-                nrn3["DbConnectivity"]["angles"] = {}
+                new_nrn3_curve["meta"]["curve"]["starting_point"]["x"] =  nrn2["meta"]["center"]["x"] + tmp_dx
+                new_nrn3_curve["meta"]["curve"]["starting_point"]["y"] =  nrn2["meta"]["center"]["y"] + tmp_dy
+                new_nrn3_curve["meta"]["curve"]["basis_vector"]["x"] -= tmp_dx
+                new_nrn3_curve["meta"]["curve"]["basis_vector"]["y"] -= tmp_dy
+                # normaliser le basis_vector
+                new_nrn3_curve["meta"]["curve"]["basis_vector"]["x"] = new_nrn3_curve["meta"]["curve"]["basis_vector"]["x"] / np.sqrt(np.power(new_nrn3_curve["meta"]["curve"]["basis_vector"]["x"],2)+np.power(new_nrn3_curve["meta"]["curve"]["basis_vector"]["y"],2))
+                new_nrn3_curve["meta"]["curve"]["basis_vector"]["y"] = new_nrn3_curve["meta"]["curve"]["basis_vector"]["y"] / np.sqrt(np.power(new_nrn3_curve["meta"]["curve"]["basis_vector"]["x"],2)+np.power(new_nrn3_curve["meta"]["curve"]["basis_vector"]["y"],2))
+                print("###############################")
+                print("nrn3", new_nrn3_curve["_id"])
+                print("tmp_dx, tmp_dy", tmp_dx, tmp_dy)
+                print("basis_vector", new_nrn3_curve["meta"]["curve"]["basis_vector"])
+                # Ajouter la dbconnectivity
+                for previous_nrn3_id in lst_nrn3_found:
+                    previous_nrn3 = self.nrn_tls.lst_nrns[previous_nrn3_id-1].neuron
+                    new_nrn3_curve["DbConnectivity"]["anti_lateral"].append(previous_nrn3["_id"])
+                    previous_nrn3["DbConnectivity"]["lateral_connexion"].append(new_nrn3_curve["_id"])
 
-                all_prevs[crt_branch].extend(list(strc_nrn2.values()))
-                new_prevs_nrn3.append(nrn3)
-                vector_1 = nrn3["meta"]["glbl_prm"]["u_axis"]
+                # le neurone ligne :
+                lst_nrn3 = self.create_new_nrn3(lst_nrn3, nrn2, "sentive_vision_line")
+                new_nrn3_2 = self.nrn_tls.lst_nrns[lst_nrn3[-1]].neuron
+                print("###############################")
+                print("nrn3", new_nrn3_2["_id"])
 
-                for prev_nrn3 in prevs_nrn3:
-                    # print("prev_nrn3",prev_nrn3)
-                    prev_nrn3["DbConnectivity"]["lateral_connexion"].append(nrn3["_id"])
-                    nrn3["DbConnectivity"]["lateral_connexion"].append(prev_nrn3["_id"])
-                    vector_2 = prev_nrn3["meta"]["glbl_prm"]["u_axis"]
-                    nrn3["DbConnectivity"]["angles"][prev_nrn3["_id"]] = self.nrn_tls.calc_angle(vector_1, vector_2)
-                    try:
-                        prev_nrn3["DbConnectivity"]["angles"][nrn3["_id"]] = nrn3["DbConnectivity"]["angles"][prev_nrn3["_id"]]
-                    except:
-                        pass
-                crt_branch += 1
+                # ajouter l'id du neurone courbe dans la liste des neurones connectés post-synaptique du neurone ligne
+                new_nrn3_2["DbConnectivity"]["post_synaptique"].append(new_nrn3_curve["_id"])
 
-            prevs_nrn3 = new_prevs_nrn3
+                # list_coupled_nrn3s.append([new_nrn3_curve["_id"], new_nrn3_2["_id"]])
 
-            crt_branch = 0
-            if len(all_prevs[crt_branch])==0:
-                try:
-                    all_prevs = [[remaining_nrn2_id.pop(list(remaining_nrn2_id.keys())[0])]]
-                except:
-                    all_prevs = [[]]
+            elif nrn3_curve_not_found:
+                # le neurone courbe :
+                lst_nrn3 = self.create_new_nrn3(lst_nrn3, nrn2)
+                new_nrn3 = self.nrn_tls.lst_nrns[lst_nrn3[-1]].neuron
+                tmp_dx = barycentre[0] - 1
+                tmp_dy = barycentre[1] - 1
+                new_nrn3["meta"]["curve"]["starting_point"]["x"] =  nrn2["meta"]["center"]["x"] + tmp_dx
+                new_nrn3["meta"]["curve"]["starting_point"]["y"] =  nrn2["meta"]["center"]["y"] + tmp_dy
+                # new_nrn3["meta"]["curve"]["basis_vector"]["x"] += tmp_dx
+                # new_nrn3["meta"]["curve"]["basis_vector"]["y"] += tmp_dy
+                print("###############################")
+                print("nrn3", new_nrn3["_id"])
+                # Ajouter la dbconnectivity
+                for previous_nrn3_id in lst_nrn3_found:
+                    previous_nrn3 = self.nrn_tls.lst_nrns[previous_nrn3_id-1].neuron
+                    new_nrn3["DbConnectivity"]["anti_lateral"].append(previous_nrn3["_id"])
+                    previous_nrn3["DbConnectivity"]["lateral_connexion"].append(new_nrn3["_id"])
 
-        print(max_angle)
+            # liste des neurones nrn3 trouvés
+            lst_nrn3_found = copy.deepcopy(tmp_lst_nrn3_found)
 
+
+            ##################################
+            # détermination du pixel suivant :
+            if len(new_pixels_detected) > 0:
+                # rechercher s'il existe un max exclusif (c'est à dire un max qui n'est égal à aucun autre ?)
+                max_iterations = 0
+                nb_max_found = 0
+                new_pixels_max = []
+                for pixel_detected in new_pixels_detected:
+                    if pixel_detected["nb_iteration"]>max_iterations:
+                        max_iterations = pixel_detected["nb_iteration"]
+                        nb_max_found = 1
+                        new_pixels_max = [pixel_detected]
+                    elif pixel_detected["nb_iteration"]==max_iterations:
+                        nb_max_found += 1
+                        new_pixels_max.append(pixel_detected)
+
+                min_error = 999
+
+                if nb_max_found == 1:
+                    new_x = new_pixels_max[0]["x"]
+                    new_y = new_pixels_max[0]["y"]
+                elif nb_max_found >1:
+                    for new_pixel in new_pixels_max:
+                        tmp_error = np.abs(new_pixel["distance"] + new_pixel["angle"])
+                        if tmp_error < min_error:
+                            min_error = tmp_error
+                            new_x = new_pixel["x"]
+                            new_y = new_pixel["y"]
+                            print("$$$> min_error", min_error, "[new_x:", new_x, ", new_y:", new_y, "]")
+
+                print("°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°")
+                print("Nombre de positions trouvées", len(new_pixels_detected))
+                print("max_iterations", max_iterations)
+                print("nb_max_found", nb_max_found)
+                print("new_pixels_max", new_pixels_max)
+                print("POSITION choisie:", new_x, new_y)
+                print("°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°")
+
+        #                          _                 _             _          _    _             
+        #    ____  _ _ __ _ __ _ _(_)_ __  ___ _ _  | |___ ___  __| |___ _  _| |__| |___ _ _  ___
+        #   (_-< || | '_ \ '_ \ '_| | '  \/ -_) '_| | / -_|_-< / _` / _ \ || | '_ \ / _ \ ' \(_-<
+        #   /__/\_,_| .__/ .__/_| |_|_|_|_\___|_|   |_\___/__/ \__,_\___/\_,_|_.__/_\___/_||_/__/
+        #           |_|  |_|                                                                     
+        # Faire une boucle sur tous les neurones curve et line pour supprimer les doublons
+        # on défini un doublon par un neurone ayant le même starting_point
+        # on supprime le doublon ayant le moins d'itérations
+        # for coupled_nrn3 in list_coupled_nrn3s:
+        #     nrn3_1 = self.nrn_tls.get_neuron_from_id(coupled_nrn3[0])
+        #     nrn3_2 = self.nrn_tls.get_neuron_from_id(coupled_nrn3[1])
+        #     if nrn3_1["meta"]["curve"]["nb_iteration"] >= nrn3_2["meta"]["line"]["nb_iteration"]:
+        #         nrn3_to_remove = nrn3_2
+        #     else:
+        #         nrn3_to_remove = nrn3_1
+        #     print("nrn3_to_remove", nrn3_to_remove["_id"])
+        #     print("nrn3_to_remove", nrn3_to_remove)
+
+        #     # on supprime le doublon
+        #     self.nrn_tls.remove_nrn_by_id(nrn3_to_remove["_id"])
+
+
+    def test_pos_predict_on_3x3_grid(self, nrn2, nrn3_pos_predict):
+        if nrn3_pos_predict["x"] - nrn2["meta"]["center"]["x"] > 1:
+            nrn3_pos_predict["x"] = nrn2["meta"]["center"]["x"] + 1
+        elif nrn3_pos_predict["x"] - nrn2["meta"]["center"]["x"] < -1:
+            nrn3_pos_predict["x"] = nrn2["meta"]["center"]["x"] - 1
+        if nrn3_pos_predict["y"] - nrn2["meta"]["center"]["y"] > 1:
+            nrn3_pos_predict["y"] = nrn2["meta"]["center"]["y"] + 1
+        elif nrn3_pos_predict["y"] - nrn2["meta"]["center"]["y"] < -1:
+            nrn3_pos_predict["y"] = nrn2["meta"]["center"]["y"] - 1
+        return nrn3_pos_predict
+
+
+    def create_new_nrn3(self, lst_nrn3, nrn2, nrn_type="sentive_vision_curve"):
+        """_summary_
+        Crée un nouveau neurone de la couche 3 et le connecte au neurone 2
+
+        Args:
+            lst_nrn3 (_type_): _description_
+            nrn2 (_type_): _description_
+            nrn_type (str, optional): _description_. Defaults to "sentive_vision_curve".
+        """
+            
+        nb3  = self.nrn_tls.add_new_nrn(nrn_type)
+
+        # on ajoute le neurone à la liste des neurones de la couche 2
+        lst_nrn3.append(nb3)
+        # racourci pour accéder au neurone
+        nrn3 = self.nrn_tls.lst_nrns[nb3].neuron
+
+        # rendre le vecteur orientation du neurone 2 unitaire
+        # norm_vecteur = np.sqrt(np.power(nrn2["meta"]["orientation"]["x"],2)+np.power(nrn2["meta"]["orientation"]["y"],2))
+
+        key_nrn_type = "curve"
+
+        if nrn_type == "sentive_vision_curve":
+            key_nrn_type = "curve"
+
+        elif nrn_type == "sentive_vision_line":
+            key_nrn_type = "line"
+
+        # maj du starting_point c'est le centre du nrn2
+        nrn3["meta"][key_nrn_type]["starting_point"] = nrn2["meta"]["center"]
+        # maj du vecteur de base
+        # nrn3["meta"][key_nrn_type]["basis_vector"]["x"] = np.sqrt(2) * nrn2["meta"]["orientation"]["x"]/norm_vecteur
+        # nrn3["meta"][key_nrn_type]["basis_vector"]["y"] = np.sqrt(2) * nrn2["meta"]["orientation"]["y"]/norm_vecteur
+        nrn3["meta"][key_nrn_type]["basis_vector"]["x"] = nrn2["meta"]["orientation"]["x"]
+        nrn3["meta"][key_nrn_type]["basis_vector"]["y"] = nrn2["meta"]["orientation"]["y"]
+        nrn3["meta"][key_nrn_type]["nb_iteration"] = 1
+        nrn3["meta"]["pending_nb_iteration"] = 1
+
+        # on connecte le nrn2 au nrn3
+        nrn3["DbConnectivity"]["pre_synaptique"].append(nrn2["_id"])
+
+        '''
+        # on lui ajoute les pixels
+        mtrx = np.zeros([28,28])
+        # boucle sur les neurones pixels présynaptiques du neurone 2
+        for nrn_pxl_id in nrn2["DbConnectivity"]["pre_synaptique"]:
+            if nrn_pxl_id > 0:
+                    # on récupère la matrice du neurone pixel
+                mtrx = self.nrn_tls.get_neuron_receptive_field(nrn_pxl_id, mtrx)
+
+            # on sauvegarde la matrice
+        nrn3["meta"]["pixels_matrix"] = mtrx
+        '''
+        return lst_nrn3
 
     def find_tips(self, cp_lst_nrns, lthrshld_tip, lthrshld_nod, G, r_thrshld_tip=-1):
         l_tmp_tips = [] # id des neurones situés à une extrémité
@@ -613,320 +1174,6 @@ class sentive_vision_network(object):
         return set(lst_output)
 
 
-    def layer_3(self):
-        """ Détermine * les neurones séquences *
-        """
-        # création d'une nouvelle couche 
-        self.nrn_tls.new_layer()
-        
-        # lien vers la 2eme couche:
-        G = self.nrn_tls.layer_graph[1]
-        # G = self.nrn_tls.netGraph
-        G2 = copy.deepcopy(G)
-
-        pos_2_cut_off = {
-                "connector":[],
-                "position":[],
-                "nrn_id":[],
-                "crnt_nrn":[]
-            }
-
-        bl_got_segmented = False
-
-        # copie de la liste des pixels
-        # cp_lst_pxls = copy.deepcopy(self.nrn_pxls)
-
-        cp_lst_nrns = [] # copie de la liste des neurones de la 2eme couche
-        # calcul des ratios pour chaque neurone
-        nrn_ratio_conn = []
-        nb_ltrl_conn = []
-        for nrn_pos in self.nrn_tls.lst_nrns:
-            nrn = nrn_pos.neuron
-            if nrn["layer_id"]==2:
-                cp_lst_nrns.append(nrn["_id"])
-                nb_ltrl_conn.append(len(nrn["DbConnectivity"]["lateral_connexion"]))
-                tmp_num_conn = []                
-                for nrn_lat in nrn["DbConnectivity"]["lateral_connexion"]:
-                    tmp_num_conn.append(len(self.nrn_tls.lst_nrns[nrn_lat-1].neuron["DbConnectivity"]["lateral_connexion"]))
-                new_ratio = len(nrn["DbConnectivity"]["lateral_connexion"])/np.mean(tmp_num_conn)
-                nrn["ratio_conn"] = new_ratio
-                nrn_ratio_conn.append(new_ratio)
-
-        # seuil nombre relatif de connexions
-        # r_thrshld_tip = min(nrn_ratio_conn)
-        lthrshld_tip = min(nb_ltrl_conn)+1 # seuil pour détecter les extrémités
-        lthrshld_nod = max(nb_ltrl_conn) # seuil pour détecter les nœuds
-
-
-        # Sélectionner plusieurs tips potentiels dans la liste.
-        l_tmp_tips, nrn_nodes_id, nrn_stop_id = self.find_tips(cp_lst_nrns, lthrshld_tip, lthrshld_nod, G)
-        # print("neurons TIPS:",l_tmp_tips,", nrn NODES",nrn_nodes_id, "et neurons STOP:",nrn_stop_id)
-        # initial_tips = copy.deepcopy(l_tmp_tips)
-        if len(l_tmp_tips)<=1:
-            l_tmp_tips.extend(nrn_stop_id)
-
-        nb_max = len(cp_lst_nrns)
-        int_limit = 10
-        reste_percent = 100
-        nb_min = -1
-        print("taille neurones à séquencer :", nb_max)
-
-        while reste_percent>=self.MIN_PATH and int_limit>=0:
-            # Calculer les distances neuronales entre chacun
-            tip_max_length = 0
-            tip_1 = -1
-            tip_2 = -1
-            for pos_tp_1 in range(len(l_tmp_tips)-1):
-                for pos_tp_2 in range(pos_tp_1+1, len(l_tmp_tips)):
-                    try:
-                        tmp_max_length = nx.shortest_path_length(G2, source=l_tmp_tips[pos_tp_1], target=l_tmp_tips[pos_tp_2])
-                    except:
-                        tmp_max_length = 0
-                    if tip_max_length<tmp_max_length:
-                        tip_max_length = tmp_max_length
-                        tip_1 = l_tmp_tips[pos_tp_1]
-                        tip_2 = l_tmp_tips[pos_tp_2]
-
-            # Sélectionner celui qui a la distance la plus longue.
-            # en faire le chemin 
-            if tip_1!=-1 and tip_2!=-1:
-                first_path = nx.shortest_path(G2, source=tip_1, target=tip_2)
-                nrn_activated = self.get_nrn_from_path(first_path)
-
-                # Supprime la liste des neurones:
-                for nrn_id in nrn_activated:
-                    try:
-                        G2.remove_node(nrn_id)
-                    except:
-                        pass
-                        # print("The node",nrn_id,"is not in the graph.")
-                # Récupère la liste des neurones mobilisés et fait la différence ''
-                # print("cp_lst_nrns\n", cp_lst_nrns)
-                cp_lst_nrns = list(set(cp_lst_nrns).difference(nrn_activated))
-                l_tmp_tips = cp_lst_nrns
-
-                nb = self.nrn_tls.add_new_nrn("sentive_sequence_nrn")
-                nrn3 = self.nrn_tls.lst_nrns[nb].neuron
-                self.slct_sgmts.append(nrn3["_id"])
-                nrn3["meta"]["path"] = first_path
-                nrn3["meta"]["mobilise_nrn2_ids"] = nrn_activated
-                nrn3["DbConnectivity"]["pre_synaptique"] = nrn_activated
-                nrn3["meta"]["ratio_pxls_total"] = len(nrn_activated)/self.nb_nrn_pxls
-                self.nrn_segments.append(nrn3)
-                # print("nouveau neurone 3 créé:", nb,", path:", first_path)
-                print("taille neurones à séquencer :", len(cp_lst_nrns))
-
-                if nb_min ==-1:
-                    nb_min = nb
-                reste_percent = 100*len(cp_lst_nrns)/nb_max
-            else:
-                print("cannot create any layer_3 neuron", tmp_max_length)
-
-            int_limit -= 1
-
-        # print
-        segmented_path = self.nrn_tls.lst_nrns[nb_min].neuron["meta"]["path"]
-        
-        for nrn_pos in range(nb_min+1, len(self.nrn_tls.lst_nrns)):
-            crnt_nrn = self.nrn_tls.lst_nrns[nrn_pos].neuron
-            path_crnt = crnt_nrn["meta"]["path"]
-            path_f1rst = self.nrn_tls.lst_nrns[nb_min].neuron["meta"]["mobilise_nrn2_ids"]
-            # print("path_f1rst",path_f1rst)
-            tip_1 = path_crnt[0]
-            # récupérer les neurones connectés au tip_1
-            candidates = self.get_nrn_from_path([tip_1])
-            lst_candidats = set(path_f1rst).intersection(candidates)
-            max_conno = 0
-            nrn_win_1 = -1
-            # print("lst_candidats",lst_candidats)
-            for nrn2_id in lst_candidats:
-                nrn2 = self.nrn_tls.get_neuron_from_id(nrn2_id)
-                if max_conno < len(nrn2["DbConnectivity"]["lateral_connexion"]):
-                    max_conno = len(nrn2["DbConnectivity"]["lateral_connexion"])
-                    nrn_win_1 = nrn2_id
-            
-            # print("nrn_win 1",nrn_win_1)
-            if nrn_win_1!=-1:
-                crnt_nrn["meta"]["path"] = [nrn_win_1] + crnt_nrn["meta"]["path"]
-                # boucle sur le path du first
-                int_pos = 0
-                for nrn_id in segmented_path:
-                    # regarde les connexions de chaque neurone
-                    nrn_connected = self.get_nrn_from_path([nrn_id])
-                    if len(nrn_connected.intersection({nrn_win_1}))>0:
-                        pos_2_cut_off["nrn_id"].append(nrn_id)
-                        pos_2_cut_off["connector"].append(nrn_win_1)
-                        pos_2_cut_off["position"].append(int_pos)
-                        pos_2_cut_off["crnt_nrn"].append(crnt_nrn)
-                        # bl_got_segmented = True
-                        print("found possible connexion on nrn id",nrn_id, ":",nrn_connected)
-                        break
-                    int_pos += 1
-            
-            tip_2 = path_crnt[len(path_crnt)-1]
-            candidates = self.get_nrn_from_path([tip_2])
-            lst_candidats = set(path_f1rst).intersection(candidates)
-            # print("lst_candidats",lst_candidats)
-            max_conno = 0
-            nrn_win_2 = -1
-            
-            for nrn2_id in lst_candidats:
-                nrn2 = self.nrn_tls.get_neuron_from_id(nrn2_id)
-                if max_conno < len(nrn2["DbConnectivity"]["lateral_connexion"]):
-                    max_conno = len(nrn2["DbConnectivity"]["lateral_connexion"])
-                    nrn_win_2 = nrn2_id
-
-            if nrn_win_2!=-1 and nrn_win_2!=nrn_win_1:
-                crnt_nrn["meta"]["path"].append(nrn_win_2)
-                int_pos = 0
-                for nrn_id in segmented_path:
-                    # regarde les connexions de chaque neurone
-                    nrn_connected = self.get_nrn_from_path([nrn_id])
-                    if len(nrn_connected.intersection({nrn_win_2}))>0:
-                        pos_2_cut_off["nrn_id"].append(nrn_id)
-                        pos_2_cut_off["connector"].append(nrn_win_2)
-                        pos_2_cut_off["position"].append(int_pos)
-                        pos_2_cut_off["crnt_nrn"].append(crnt_nrn)
-                        # bl_got_segmented = True
-                        print("found possible connexion on nrn id",nrn_id, ":",nrn_connected)
-                        break
-                    int_pos += 1
-            
-        # Découper le segment principal en commençant par la position la plus petite
-        print("Recherche des nœuds suivants", pos_2_cut_off["connector"], pos_2_cut_off["nrn_id"])
-        # self.nrn_tls.remove_nrn_by_id(common_nrn)
-        print("Commence la découpe de segmented_path",segmented_path)
-        while len(pos_2_cut_off["position"])>0:
-            int_pos = np.argmin(pos_2_cut_off["position"])
-            shorter_path = []
-            # print("recherche:",pos_2_cut_off["nrn_id"][int_pos])
-            len_path = np.where(np.array(segmented_path) == pos_2_cut_off["nrn_id"][int_pos])
-            if np.shape(len_path[0])[0]>0 :
-                len_path = len_path[0][0]
-            else:
-                pos_2_cut_off["nrn_id"].pop(int_pos)
-                pos_2_cut_off["connector"].pop(int_pos)
-                pos_2_cut_off["position"].pop(int_pos)
-                pos_2_cut_off["crnt_nrn"].pop(int_pos)
-                continue
-            for path_pos in range(len_path+1):
-                new_path_nrn_id = segmented_path.pop(0)
-                shorter_path.append(new_path_nrn_id)
-                if new_path_nrn_id==pos_2_cut_off["nrn_id"][int_pos]:
-                    shorter_path.append(pos_2_cut_off["connector"][int_pos])
-                    segmented_path = [pos_2_cut_off["connector"][int_pos]] + segmented_path
-                    # print("recherche",pos_2_cut_off["nrn_id"][int_pos],"segmented_path",segmented_path)
-                    # Create le nrn3
-                    nb = self.nrn_tls.add_new_nrn("sentive_sequence_nrn")
-                    nrn3 = self.nrn_tls.lst_nrns[nb].neuron
-                    nrn3["meta"]["path"] = shorter_path
-                    nrn_activated = self.get_nrn_from_path(shorter_path)
-                    nrn3["DbConnectivity"]["pre_synaptique"] = nrn_activated
-                    nrn3["meta"]["ratio_pxls_total"] = len(nrn_activated)/self.nb_nrn_pxls
-                    print("ratio_pxls_total nrn _ID",nrn3["_id"],", ",nrn3["meta"]["ratio_pxls_total"])
-                    self.nrn_segments.append(nrn3)
-                    bl_got_segmented = True
-                    break
-            pos_2_cut_off["nrn_id"].pop(int_pos)
-            pos_2_cut_off["connector"].pop(int_pos)
-            pos_2_cut_off["position"].pop(int_pos)
-            pos_2_cut_off["crnt_nrn"].pop(int_pos)
-
-        if bl_got_segmented:
-            print("Fin de la découpe de segmented_path",segmented_path)
-            self.nrn_segments.pop(0)
-            self.nrn_tls.remove_nrn_pos(nb_min)
-            nb = self.nrn_tls.add_new_nrn("sentive_sequence_nrn")
-            nrn3 = self.nrn_tls.lst_nrns[nb].neuron
-            nrn3["meta"]["path"] = segmented_path
-            nrn_activated = self.get_nrn_from_path(segmented_path)
-            nrn3["DbConnectivity"]["pre_synaptique"] = nrn_activated
-            nrn3["meta"]["ratio_pxls_total"] = len(nrn_activated)/self.nb_nrn_pxls
-            print("ratio_pxls_total nrn _ID",nrn3["_id"],", ",nrn3["meta"]["ratio_pxls_total"])
-            self.nrn_segments.append(nrn3)
-
-        print("nombre de neurones couches 1, 2 et 3 :",len(self.nrn_tls.lst_nrns))
-        print("*"*40)
-
-
-    def layer_3_bis(self):
-        for tmp_pos in range(len(self.nrn_segments)):
-            if len(self.nrn_segments[tmp_pos]["meta"]["path"])>1:
-                # calcul des vecteurs
-                nrn2_id = self.nrn_segments[tmp_pos]["meta"]["path"][0]
-                nrn2 = self.nrn_tls.get_neuron_from_id(nrn2_id)
-                # self.nrn_segments[tmp_pos]["ratio_pxls_total"] = len(set(nrn3["meta"]["mobilise_pxl_ids"]))/self.nb_nrn_pxls
-                try:
-                    point1 = nrn2["meta"]["center"]
-                except:
-                    continue
-                for nrn2_pos in range(1, len(self.nrn_segments[tmp_pos]["meta"]["path"])):
-                    nrn2_id = self.nrn_segments[tmp_pos]["meta"]["path"][nrn2_pos]
-                    nrn2 = self.nrn_tls.get_neuron_from_id(nrn2_id)
-                    if nrn2 == '': continue
-                    point2 = nrn2["meta"]["center"]
-                    vecteur = {
-                        "x":point2["x"]-point1["x"],
-                        "y":point2["y"]-point1["y"]
-                    }
-                    self.nrn_segments[tmp_pos]["meta"]["vecteurs"].append(vecteur)
-                    self.nrn_segments[tmp_pos]["meta"]["distances"].append(
-                        self.nrn_tls.calc_dist(point1, point2))
-                    
-                    point1 = point2
-                
-                # calcul des angles
-                if len(self.nrn_segments[tmp_pos]["meta"]["vecteurs"])>1:
-                    vector_1 = self.nrn_segments[tmp_pos]["meta"]["vecteurs"][0]
-                    for v_pos in range(1, len(self.nrn_segments[tmp_pos]["meta"]["vecteurs"])):
-                        vector_2 = self.nrn_segments[tmp_pos]["meta"]["vecteurs"][v_pos]
-                        self.nrn_segments[tmp_pos]["meta"]["angles"].append(self.nrn_tls.calc_angle(vector_1, vector_2))
-                        vector_1 = vector_2
-
-
-
-    def layer_4(self):
-        """
-            Création d'un ensemble de neurones permettant de comparer ensuite les caractères
-        """
-        # création d'une nouvelle couche 
-        self.nrn_tls.new_layer()
-
-        len_nrn = len(self.nrn_tls.lst_nrns)
-        for nrn3_pos in range(self.nrn_tls.pos_nrn_by_layer[2], len_nrn):
-            nrn3 = self.nrn_tls.lst_nrns[nrn3_pos].neuron
-            # check 
-            if nrn3["layer_id"]==3:
-                for nrn2_pos in range(1, len(nrn3["meta"]["path"])-1):
-                    nrn2_id = nrn3["meta"]["path"][nrn2_pos]
-                    # crée un nouveau neurone
-                    self.new_angle_neuron(nrn3["meta"]["path"][nrn2_pos-1], nrn2_id, nrn3["meta"]["path"][nrn2_pos+1])
-
-                for nrn3_pos2 in range(nrn3_pos+1, len_nrn):
-                    nrn3_2 = self.nrn_tls.lst_nrns[nrn3_pos2].neuron
-                    # print(nrn3_2)
-                    # Vérifie maintenant les 4 extrémités
-                    if nrn3["meta"]["path"][0] == nrn3_2["meta"]["path"][0]:
-                        # Crée un neurone commun
-                        self.new_angle_neuron(nrn3["meta"]["path"][1], nrn3["meta"]["path"][0], nrn3_2["meta"]["path"][1])
-                    elif nrn3["meta"]["path"][0] == nrn3_2["meta"]["path"][-1]:
-                        self.new_angle_neuron(nrn3["meta"]["path"][1], nrn3["meta"]["path"][0], nrn3_2["meta"]["path"][-2])
-
-                    elif nrn3["meta"]["path"][-1] == nrn3_2["meta"]["path"][-1]:
-                        self.new_angle_neuron(nrn3["meta"]["path"][-2], nrn3["meta"]["path"][-1], nrn3_2["meta"]["path"][-2])
-                    elif nrn3["meta"]["path"][-1] == nrn3_2["meta"]["path"][0]:
-                        self.new_angle_neuron(nrn3["meta"]["path"][-2], nrn3["meta"]["path"][-1], nrn3_2["meta"]["path"][1])
-        
-        # Création des connexions latérales
-        len_nrn = len(self.nrn_tls.lst_nrns)
-        for nrn4_pos in range(self.nrn_tls.pos_nrn_by_layer[3], len_nrn):
-            nrn4 = self.nrn_tls.lst_nrns[nrn4_pos].neuron
-            # check 
-            if nrn4["layer_id"]==4:
-                for nrn2_id in nrn4["DbConnectivity"]["pre_synaptique"]:
-                    nrn2 = self.nrn_tls.get_neuron_from_id(nrn2_id)
-                    for nrn_lateral_id in nrn2["DbConnectivity"]["post_synaptique"]:
-                        self.nrn_tls.add_nrn_lateral(nrn4, nrn_lateral_id)
 
 
     def new_angle_neuron(self, nrn2_1_id, nrn2_2_id, nrn2_3_id):
@@ -954,16 +1201,12 @@ class sentive_vision_network(object):
 
     def run_layers(self):
         self.layer_1() # pixels
-        ##self.layer_2_v2() # triplets
-        # self.layer_2() # triplets
-        # self.couche_3()
+        self.layer_2() # triplets
+
         # self.show_layer_vectors(3, False)
         # self.calc_angles_layer_3()
         # self.show_vectors_directions(3, False)
         # self.plot_angles_3()
-        # self.layer_3() # séquences, segments
-        # self.layer_3_bis() # calcul des angles
-        # self.layer_4() # binomes -> caractères
 
 
     def reset_episode(self):
@@ -1305,6 +1548,7 @@ class sentive_vision_network(object):
             ax.text(z,y, str(id))
             x += 1
 
+
     def plot_angles_mov_3(self):
         _, ax = plt.subplots()
         ax.plot(self.x_dist,self.angle_mov_3)
@@ -1315,6 +1559,7 @@ class sentive_vision_network(object):
             ax.text(z,y, str(id))
             x += 1
 
+
     def plot_angles_mov_4(self):
         _, ax = plt.subplots()
         ax.plot(self.x_dist_4,self.angle_mov_4)
@@ -1324,6 +1569,7 @@ class sentive_vision_network(object):
             z = self.x_dist_4[x]
             ax.text(z,y, str(id))
             x += 1
+
 
     def show_vectors_directions(self, layer_id, lbl_show_angles=True):
         X = []
@@ -1378,6 +1624,7 @@ class sentive_vision_network(object):
                     else :
                         color = "purple"
                     ax.text(x,y, str(key),color=color)
+
 
     def show_vectors_directions_nrn3_arc(self):
         X = []
