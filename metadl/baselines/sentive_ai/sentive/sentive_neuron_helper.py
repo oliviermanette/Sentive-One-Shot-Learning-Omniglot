@@ -485,8 +485,68 @@ class sentive_neuron_helper():
         nrn = self.get_neuron_from_id(nrn_id, neurons_pool)
 
         return self.get_gbl_orientO(nrn)
-        
-    
+
+
+    def check_curve_geometry(self, starting_point, basis_vector, starting_angle, acceleration, nb_min_iterations, lst_checkpoints):
+        # on initialise les distance à partir du starting_point
+        list_distances = []
+        for checkpoint in lst_checkpoints:
+            list_distances.append(self.calc_dist(starting_point, checkpoint))
+
+        # on effectue une première translation du vecteur de départ
+        current_position = {
+            "x": starting_point["x"] + basis_vector["x"],
+            "y": starting_point["y"] + basis_vector["y"]
+        }
+        # calcul des distances depuis la nouvelle position mais avec un itérateur donnant l'indice de la liste
+        self.get_closest_dist_for_checkpoints(lst_checkpoints, list_distances, current_position)
+
+        # on commence par une boucle for correspondant au nombre d'itérations minimum
+        for i in range(nb_min_iterations - 1):
+            # on effectue une rotation du vecteur
+            basis_vector = self.draw_rotate_vector(basis_vector, starting_angle)
+            # on effectue une translation du vecteur
+            current_position["x"] += basis_vector["x"]
+            current_position["y"] += basis_vector["y"]
+            # calcul des distances depuis la nouvelle position mais avec un itérateur donnant l'indice de la liste
+            self.get_closest_dist_for_checkpoints(lst_checkpoints, list_distances, current_position)
+            # modification de l'angle de rotation par l'accélération
+            starting_angle += acceleration
+
+        nb_elements = len(lst_checkpoints)
+        min_distance = copy.deepcopy(list_distances[nb_elements-1])
+        distance = copy.deepcopy(list_distances[nb_elements-1])
+        i = 0
+        # on continue dans une boucle while jusqu'à ce que la dernière distance soit minimale
+        while list_distances[nb_elements-1] == min_distance:
+            # on effectue une rotation du vecteur
+            basis_vector = self.draw_rotate_vector(basis_vector, starting_angle)
+            # on effectue une translation du vecteur
+            current_position["x"] += basis_vector["x"]
+            current_position["y"] += basis_vector["y"]
+            # calcul des distances depuis la nouvelle position mais avec un itérateur donnant l'indice de la liste
+            distance = copy.deepcopy(self.calc_dist(current_position, lst_checkpoints[nb_elements-1]))
+            i += 1
+            if distance < min_distance:
+                min_distance = copy.deepcopy(distance)
+                list_distances[nb_elements-1] = copy.deepcopy(distance)
+            if distance < 1:
+                break
+            if i > 100:
+                break
+
+            # modification de l'angle de rotation par l'accélération
+            starting_angle += acceleration
+
+        return list_distances
+
+
+    def get_closest_dist_for_checkpoints(self, lst_checkpoints, list_distances, current_position):
+        for i, checkpoint in enumerate(lst_checkpoints):
+            new_dist = self.calc_dist(current_position, checkpoint)
+            if new_dist < list_distances[i]:
+                list_distances[i] = new_dist
+
     
     def draw_rotate_vector(self, vector, angle_rotation):
         """

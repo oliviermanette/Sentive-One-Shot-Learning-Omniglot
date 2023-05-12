@@ -34,6 +34,10 @@ class sentive_vision_curve(object):
                         "x" : 0.0,
                         "y" : 0.0
                     },
+                    "last_position" : {
+                        "x" : 0.0,
+                        "y" : 0.0
+                    },
                     "nb_iteration" : 0,
                     "angle" : 0.0,
                     "acceleration" : 0.0,

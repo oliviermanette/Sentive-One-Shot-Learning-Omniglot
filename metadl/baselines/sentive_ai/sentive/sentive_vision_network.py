@@ -214,7 +214,7 @@ class sentive_vision_network(object):
             print("tmp_sub_pxl_map :\n", tmp_sub_pxl_map)
 
             # si tmp_sub_pxl_map ne contient que des 0 on quitte la boucle
-            if np.count_nonzero(tmp_sub_pxl_map) == 0:
+            while np.count_nonzero(tmp_sub_pxl_map) == 0:
                 print("\n continue seulement des zéros\n")
                 new_x = None
                 new_y = None
@@ -246,7 +246,9 @@ class sentive_vision_network(object):
                                 break
                         if new_x != None and new_y != None:
                             break
-
+            if np.count_nonzero(nrn_pxl_map) == 0:
+                print("\n break plus de neurones pixels\n")
+                break
             nrn2["meta"]["sub_pxl_map"] = self.nrn_pxl_map[new_y-1:new_y+2, new_x-1:new_x+2]
 
             tmp_list_sub_pxl = list(set(tmp_sub_pxl_map.ravel()))
@@ -308,8 +310,8 @@ class sentive_vision_network(object):
             # print("shift_y", shift_y)
             # print("vecteur orientation AVEC shift:",x_composant,y_composant)
             # print("POSITION REELLE FINALE", new_x + x_composant, new_y + y_composant)
-            desired_x = np.floor(new_x + x_composant)
-            desired_y = np.floor(new_y + y_composant)
+            # desired_x = np.floor(new_x + x_composant)
+            # desired_y = np.floor(new_y + y_composant)
 
             # on sauvegarde le vecteur d'orientation
             nrn2["meta"]["orientation"] = {
@@ -914,6 +916,9 @@ class sentive_vision_network(object):
                             # ajout de l'id du nrn3 dans postsynaptic DbConnectivity': {'post_synaptique
                             nrn2["DbConnectivity"]["post_synaptique"].append(nrn3["_id"])
 
+                            # mettre à jour last_position
+                            nrn3["meta"]["curve"]["last_position"] = nrn2["meta"]["center"]
+
             # si on a pas trouvé de neurone de la couche 3 valide on en crée un nouveau
             # un nrn ligne
             if nrn3_not_found:
@@ -921,19 +926,12 @@ class sentive_vision_network(object):
                 # le neurone courbe :
                 lst_nrn3 = self.create_new_nrn3(lst_nrn3, nrn2)
                 new_nrn3_curve = self.nrn_tls.lst_nrns[lst_nrn3[-1]].neuron
-                tmp_dx = barycentre[0] - 1
-                tmp_dy = barycentre[1] - 1
                 
-                new_nrn3_curve["meta"]["curve"]["starting_point"]["x"] =  nrn2["meta"]["center"]["x"] + tmp_dx
-                new_nrn3_curve["meta"]["curve"]["starting_point"]["y"] =  nrn2["meta"]["center"]["y"] + tmp_dy
-                new_nrn3_curve["meta"]["curve"]["basis_vector"]["x"] -= tmp_dx
-                new_nrn3_curve["meta"]["curve"]["basis_vector"]["y"] -= tmp_dy
                 # normaliser le basis_vector
                 new_nrn3_curve["meta"]["curve"]["basis_vector"]["x"] = new_nrn3_curve["meta"]["curve"]["basis_vector"]["x"] / np.sqrt(np.power(new_nrn3_curve["meta"]["curve"]["basis_vector"]["x"],2)+np.power(new_nrn3_curve["meta"]["curve"]["basis_vector"]["y"],2))
                 new_nrn3_curve["meta"]["curve"]["basis_vector"]["y"] = new_nrn3_curve["meta"]["curve"]["basis_vector"]["y"] / np.sqrt(np.power(new_nrn3_curve["meta"]["curve"]["basis_vector"]["x"],2)+np.power(new_nrn3_curve["meta"]["curve"]["basis_vector"]["y"],2))
                 print("###############################")
                 print("nrn3", new_nrn3_curve["_id"])
-                print("tmp_dx, tmp_dy", tmp_dx, tmp_dy)
                 print("basis_vector", new_nrn3_curve["meta"]["curve"]["basis_vector"])
                 # Ajouter la dbconnectivity
                 for previous_nrn3_id in lst_nrn3_found:
@@ -956,12 +954,7 @@ class sentive_vision_network(object):
                 # le neurone courbe :
                 lst_nrn3 = self.create_new_nrn3(lst_nrn3, nrn2)
                 new_nrn3 = self.nrn_tls.lst_nrns[lst_nrn3[-1]].neuron
-                tmp_dx = barycentre[0] - 1
-                tmp_dy = barycentre[1] - 1
-                new_nrn3["meta"]["curve"]["starting_point"]["x"] =  nrn2["meta"]["center"]["x"] + tmp_dx
-                new_nrn3["meta"]["curve"]["starting_point"]["y"] =  nrn2["meta"]["center"]["y"] + tmp_dy
-                # new_nrn3["meta"]["curve"]["basis_vector"]["x"] += tmp_dx
-                # new_nrn3["meta"]["curve"]["basis_vector"]["y"] += tmp_dy
+
                 print("###############################")
                 print("nrn3", new_nrn3["_id"])
                 # Ajouter la dbconnectivity
@@ -972,7 +965,6 @@ class sentive_vision_network(object):
 
             # liste des neurones nrn3 trouvés
             lst_nrn3_found = copy.deepcopy(tmp_lst_nrn3_found)
-
 
             ##################################
             # détermination du pixel suivant :
@@ -1192,66 +1184,6 @@ class sentive_vision_network(object):
         return 0.76 * score + 0.12 * score_length + 0.12 * score_orientation
 
 
-    def find_tips(self, cp_lst_nrns, lthrshld_tip, lthrshld_nod, G, r_thrshld_tip=-1):
-        l_tmp_tips = [] # id des neurones situés à une extrémité
-        l_tmp_node = [] # id des neurones au carrefour
-        l_tmp_stop = []
-        liste_electeurs = []
-        liste_candidats = []
-        see_tips = []
-        for pos in range(len(cp_lst_nrns)):
-            # nrn = cp_lst_nrns[pos].neuron
-            nrn = self.nrn_tls.get_neuron_from_id(cp_lst_nrns[pos])
-            # Sélection des neurones TIPS
-            see_tips.append(len(nrn["DbConnectivity"]["lateral_connexion"]))
-            if len(nrn["DbConnectivity"]["lateral_connexion"])<=lthrshld_tip:
-                l_tmp_tips.append(nrn["_id"])
-            if nrn["ratio_conn"]<=r_thrshld_tip:
-                l_tmp_tips.append(nrn["_id"])
-            # Sélection des neurones NODES
-            if len(nrn["DbConnectivity"]["lateral_connexion"])>=lthrshld_nod:
-                l_tmp_stop.append(nrn["_id"])
-                lbl_not_found = True
-                for i in range(len(liste_electeurs)):
-                    if len(set(liste_electeurs[i]).intersection(set(nrn["DbConnectivity"]["lateral_connexion"])))>0:
-                        liste_electeurs[i].extend(nrn["DbConnectivity"]["lateral_connexion"])
-                        liste_candidats[i].append(nrn["_id"])
-                        lbl_not_found = False
-                if lbl_not_found:
-                    liste_electeurs.append(nrn["DbConnectivity"]["lateral_connexion"])
-                    liste_candidats.append([nrn["_id"]])
-        # print("seuil TIPS",lthrshld_tip)
-        # print("see_tips\n",see_tips)
-        # regroupement des nodes en trop grand nombres
-        vainqueurs_elections = []
-        # déroulement du scrutin
-        for scrutin in range(len(liste_candidats)):
-            liste_votants = list(set(liste_electeurs[scrutin]))
-            resultats_election_locale = np.zeros(len(liste_candidats[scrutin]))
-            # chaque électeur procède à son vote pour les candidats locaux liste_candidats[scrutin]
-            for votant_id in range(len(liste_votants)):
-                votant = self.nrn_tls.get_neuron_from_id(liste_votants[votant_id])
-                if votant != '': 
-                    vote = votant["DbConnectivity"]["weights"]
-                    for candidat_id in range(len(liste_candidats[scrutin])):
-                        try:
-                            resultats_election_locale[candidat_id] += vote[liste_candidats[scrutin][candidat_id]]
-                        except:
-                            continue
-            vainqueurs_elections.append(liste_candidats[scrutin][np.argmax(resultats_election_locale)])   
-            # print("resultats_election_locale",resultats_election_locale,"candidats:",liste_candidats[scrutin],"vainqueur:",vainqueurs_elections[len(vainqueurs_elections)-1])
-        l_tmp_node = vainqueurs_elections
-        l_tmp_tips = list(set(l_tmp_tips))
-        # longuest = []
-        # for t in l_tmp_tips:
-        #     tmp_path_length = []
-        #     for n in l_tmp_node:
-        #         tmp_path_length.append(int(nx.shortest_path_length(G,t,n)))
-        #     longuest.append(min(tmp_path_length))
-        # # réarrange les extrémités en fonction de la longueur des chemins les plus courts
-        # l_tmp_tips = np.array(l_tmp_tips)
-        # l_tmp_tips = l_tmp_tips[np.flip(np.argpartition(np.array(longuest),len(longuest)-1))]
-        return l_tmp_tips, l_tmp_node, np.array(l_tmp_stop)
 
     
     def get_nrn_from_path(self, list_path_nrn_id):
@@ -1266,7 +1198,6 @@ class sentive_vision_network(object):
             lst_output.extend(nrn2["DbConnectivity"]["lateral_connexion"])
         
         return set(lst_output)
-
 
 
 

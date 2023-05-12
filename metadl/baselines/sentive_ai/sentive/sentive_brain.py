@@ -9,7 +9,7 @@ class sentive_brain():
         self.nnet = []
         self.nb_char = nb_char
         for i in range(nb_char):
-            # print("\n********* network:",i)
+            print("\n$ >********* network:",i)
             self.nnet.append(sentive_vision_network(episode[0][i]))
             self.nnet[i].run_layers()
         
