@@ -608,7 +608,12 @@ class sentive_vision_network(object):
                         print("basis_vector APRES", nrn3["meta"]["line"]["basis_vector"], "(angle avant et après:", tmp_angle_bsvct, ")")
                         
                         # calculer l'angle max possible             
-                        tmp_angle_max = 2 * np.arccos(n/np.sqrt(np.power(n,2)+np.power(1,2)))
+                        # Cet angle est calculé en fonction du nombre d'itération
+                        # ici je met le double de l'angle de base pour plus de tolérance
+                        # tmp_angle_max = 2 * np.arccos(n/np.sqrt(np.power(n,2)+np.power(1,2)))
+
+                        tmp_angle_max =  2 * np.arccos(n/np.sqrt(np.power(n,2)+np.power(1,2)))
+
                         print("tmp_angle_max ", tmp_angle_max)
                         # si tmp_angle_max >= tmp_angle_bsvct + nrn3["meta"]["cumulated_angle"] alors on valide la ligne
                         if tmp_angle_max >= tmp_angle_bsvct + nrn3["meta"]["cumulated_angle"]:

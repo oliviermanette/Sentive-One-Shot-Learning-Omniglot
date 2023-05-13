@@ -286,6 +286,21 @@ class sentive_neuron_helper():
         previous["y"] += 1
         return previous
     
+
+    def get_list_pixels_coord(self, nrn_id):
+        """ Returns the list of pixels coordinates of the receptive field of the
+        neuron with id nrn_id.
+        """
+        lst_pixels_coord = []
+        nrn_source = self.get_neuron_from_id(nrn_id)
+        if nrn_source is None:
+            return None
+
+        for nrn_id in nrn_source["DbConnectivity"]["pre_synaptique"]:
+            nrn_pixel = self.get_neuron_from_id(nrn_id)
+            lst_pixels_coord.append(nrn_pixel["meta"]["center"])
+        return lst_pixels_coord
+    
     
     def rotate_vector(self, vector, angle_rotation):
         """Retourne les coordonnées du vector après rotation
