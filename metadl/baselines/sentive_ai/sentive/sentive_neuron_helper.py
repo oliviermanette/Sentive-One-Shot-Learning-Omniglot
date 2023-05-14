@@ -516,6 +516,7 @@ class sentive_neuron_helper():
         # calcul des distances depuis la nouvelle position mais avec un itérateur donnant l'indice de la liste
         self.get_closest_dist_for_checkpoints(lst_checkpoints, list_distances, current_position)
 
+        j = 0
         # on commence par une boucle for correspondant au nombre d'itérations minimum
         for i in range(nb_min_iterations - 1):
             # on effectue une rotation du vecteur
@@ -527,11 +528,12 @@ class sentive_neuron_helper():
             self.get_closest_dist_for_checkpoints(lst_checkpoints, list_distances, current_position)
             # modification de l'angle de rotation par l'accélération
             starting_angle += acceleration
+            j+=1
 
         nb_elements = len(lst_checkpoints)
         min_distance = copy.deepcopy(list_distances[nb_elements-1])
         distance = copy.deepcopy(list_distances[nb_elements-1])
-        i = 0
+        
         # on continue dans une boucle while jusqu'à ce que la dernière distance soit minimale
         while list_distances[nb_elements-1] == min_distance:
             # on effectue une rotation du vecteur
@@ -541,18 +543,19 @@ class sentive_neuron_helper():
             current_position["y"] += basis_vector["y"]
             # calcul des distances depuis la nouvelle position mais avec un itérateur donnant l'indice de la liste
             distance = copy.deepcopy(self.calc_dist(current_position, lst_checkpoints[nb_elements-1]))
-            i += 1
+            j += 1
             if distance < min_distance:
                 min_distance = copy.deepcopy(distance)
                 list_distances[nb_elements-1] = copy.deepcopy(distance)
             if distance < 1:
                 break
-            if i > 100:
+            if j > 100:
                 break
 
             # modification de l'angle de rotation par l'accélération
             starting_angle += acceleration
 
+        # print("°-° : distance nb itérations:", j)
         return list_distances
 
 

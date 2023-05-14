@@ -952,6 +952,8 @@ class sentive_vision_network(object):
 
                 # ajouter l'id du neurone courbe dans la liste des neurones connectés post-synaptique du neurone ligne
                 new_nrn3_2["DbConnectivity"]["post_synaptique"].append(new_nrn3_curve["_id"])
+                # et inversement
+                new_nrn3_curve["DbConnectivity"]["anti_post_synaptique"].append(new_nrn3_2["_id"])
 
                 # list_coupled_nrn3s.append([new_nrn3_curve["_id"], new_nrn3_2["_id"]])
 

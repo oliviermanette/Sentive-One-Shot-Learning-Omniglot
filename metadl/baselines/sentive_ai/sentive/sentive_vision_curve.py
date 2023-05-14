@@ -15,6 +15,7 @@ class sentive_vision_curve(object):
                 "post_synaptique":[],
                 "lateral_connexion":[],
                 "anti_lateral":[],
+                "anti_post_synaptique":[],
                 "weights":{}
             },
             "meta":{
