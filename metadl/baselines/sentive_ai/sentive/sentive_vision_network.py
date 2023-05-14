@@ -1101,6 +1101,388 @@ class sentive_vision_network(object):
         return lst_nrn3
     
 
+    def search_best_acc(self, str_curve, lst_checkpoints, min_acc, max_acc):
+        if min_acc > max_acc:
+            tmp_acc = copy.deepcopy(min_acc)
+            min_acc = copy.deepcopy(max_acc)
+            max_acc = copy.deepcopy(tmp_acc)
+
+        split_acc = split_acc = np.mean([max_acc,  min_acc] )
+
+        lst_result = []
+        lst_acc = []
+
+        for i in range(20):
+            # print("min acc:", min_acc, ", split acc:", split_acc, ", max acc:", max_acc)
+            result = self.nrn_tls.check_curve_geometry(str_curve["starting_point"], str_curve["basis_vector"], str_curve["angle"], min_acc, str_curve["nb_iteration"], lst_checkpoints)
+            # print("results min:", result)
+            result_min = np.sum(result)
+
+            result = self.nrn_tls.check_curve_geometry(str_curve["starting_point"], str_curve["basis_vector"], str_curve["angle"], max_acc, str_curve["nb_iteration"], lst_checkpoints)
+            # print("results max:", result)
+            result_max = np.sum(result)
+            
+            result = self.nrn_tls.check_curve_geometry(str_curve["starting_point"], str_curve["basis_vector"], str_curve["angle"], split_acc, str_curve["nb_iteration"], lst_checkpoints)
+            # print("results split:", result)
+            result_split = np.sum(result)
+            lst_acc.append(split_acc)
+            lst_result.append(result_split)
+
+            avg_min = np.mean([result_min, result_split])
+            avg_max = np.mean([result_max, result_split])
+
+            if avg_min<avg_max:
+                max_acc = copy.deepcopy(split_acc)
+                # print(avg_min)
+            else:
+                min_acc = copy.deepcopy(split_acc)
+                # print(avg_max)
+
+            split_acc = np.mean([max_acc,  min_acc] )
+            # print()
+            
+        print("min acc:", min_acc, ", split acc:", split_acc, ", max acc:", max_acc)
+        # print(lst_acc)
+        # print(lst_result)
+        # plt.scatter(lst_acc,lst_result)
+        # plt.show()
+        return split_acc
+
+
+    def search_best_angle(self, str_curve, lst_checkpoints):
+        """
+        Fonction qui recherche par dichotomie le meilleur angle possible pour la courbe passant la liste des points lst_checkpoints.
+
+        Args:
+            str_curve (struct): paramètres complets de la courbe Sentive dont l'angle doit être amélioré
+            lst_checkpoints (list): liste de points par lesquels la courbe doit passer
+
+        Returns:
+            float: angle
+        """
+        min_angle = -np.pi/2
+        max_angle = np.pi/2
+        split_angle = np.mean([max_angle,  min_angle] )
+
+        lst_result = []
+        lst_angle = []
+
+        for i in range(20):
+            result = self.nrn_tls.check_curve_geometry(str_curve["starting_point"], str_curve["basis_vector"], min_angle, str_curve["acc"], str_curve["nb_iteration"], lst_checkpoints)
+            result_min = np.sum(result)
+
+            result = self.nrn_tls.check_curve_geometry(str_curve["starting_point"], str_curve["basis_vector"], max_angle, str_curve["acc"], str_curve["nb_iteration"], lst_checkpoints)
+            result_max = np.sum(result)
+            
+            result = self.nrn_tls.check_curve_geometry(str_curve["starting_point"], str_curve["basis_vector"], split_angle, str_curve["acc"], str_curve["nb_iteration"], lst_checkpoints)
+            result_split = np.sum(result)
+            lst_angle.append(split_angle)
+            lst_result.append(result_split)
+
+            avg_min = np.mean([result_min, result_split])
+            avg_max = np.mean([result_max, result_split])
+
+            if avg_min<avg_max:
+                max_angle = copy.deepcopy(split_angle)
+            else:
+                min_angle = copy.deepcopy(split_angle)
+
+            split_angle = np.mean([max_angle,  min_angle] )
+
+        print("min angle:", min_angle, ", split angle:", split_angle, ", max angle:", max_angle)
+        # print(lst_angle)
+        # print(lst_result)
+        # plt.scatter(lst_angle,lst_result)
+        # plt.show()
+        return split_angle
+    
+    def pruning_phase(self):
+        # tu te fais 2 petites listes une pour les nrn courbes et une pour les nrn lignes
+        lst_nrn_curve = []
+        lst_nrn_line = []
+        for nrn in self.nrn_tls.lst_nrns:
+            if nrn.neuron["type"] == "sentive_vision_curve":
+                lst_nrn_curve.append(nrn)
+            elif nrn.neuron["type"] == "sentive_vision_line":
+                lst_nrn_line.append(nrn)
+
+        # tu récupères le premier neurone ligne
+        nrn_line = lst_nrn_line.pop(0)
+        nrn_line = nrn_line.neuron
+        nrn_ligne_ok = True
+
+        while nrn_ligne_ok:
+            # tu récupères le neurone courbe associé au nrn_line
+            if len(nrn_line["DbConnectivity"]["post_synaptique"])>0:
+                nrn_id = nrn_line["DbConnectivity"]["post_synaptique"][0]
+            else:
+                nrn_id = None
+                print("ERROR : pas de neurone courbe associé")
+
+            nrn = self.nrn_tls.get_neuron_from_id(nrn_id)
+
+            print("nrn", nrn["_id"])
+            # tu récupères le suivant (connexion latérale)
+
+            if len(nrn["DbConnectivity"]["lateral_connexion"])>0:
+                nrn_suivant = self.nrn_tls.get_neuron_from_id(nrn["DbConnectivity"]["lateral_connexion"][0])
+                # print("suivant latéral:", nrn_suivant["_id"])
+
+                distance = self.nrn_tls.calc_dist(nrn["meta"]["curve"]["last_position"],nrn_suivant["meta"]["curve"]["starting_point"])
+                # tu vérifie la distance entre les deux
+                # print("distance:", distance)
+                if distance<2:
+                    # détermine les premiers paramètres de la nouvelle courbe
+                    new_curve = {}
+
+                    new_curve["starting_point"] = copy.deepcopy(nrn["meta"]["curve"]["starting_point"])
+                    # b_v = nrn_line["meta"]["line"]["basis_vector"]
+                    new_curve["basis_vector"] = copy.deepcopy(nrn["meta"]["curve"]["basis_vector"])
+
+                    # ck_pts = []
+                    # ck_pts.append(nrn["meta"]["curve"]["last_position"])
+                    # ck_pts.append(nrn_suivant["meta"]["curve"]["starting_point"])
+                    # ck_pts.append(nrn_suivant["meta"]["curve"]["last_position"])
+                    # print("ck_pts:", ck_pts)
+                    new_curve["angle"] = nrn["meta"]["curve"]["angle"]
+                    # acc = 0
+                    new_curve["acc"] = (nrn_suivant["meta"]["curve"]["angle"]-nrn["meta"]["curve"]["angle"])/nrn["meta"]["curve"]["nb_iteration"]
+
+                    new_curve["nb_iteration"] = nrn["meta"]["curve"]["nb_iteration"] + nrn_suivant["meta"]["curve"]["nb_iteration"]
+                    # print("new_curve:", new_curve)
+                    pixel_points_1 = self.nrn_tls.get_list_pixels_coord(nrn["_id"])
+                    pixel_points_2 = self.nrn_tls.get_list_pixels_coord(nrn_suivant["_id"])
+                    pixel_points = np.concatenate((pixel_points_1, pixel_points_2), axis=0)
+
+                    # recherche dichotomique de l'accélération pour améliorer la géométrie et donc les resultats
+                    min_acc = (nrn_suivant["meta"]["curve"]["angle"] - new_curve["angle"])/new_curve["nb_iteration"]
+                    max_acc = nrn_suivant["meta"]["curve"]["angle"] - new_curve["angle"]
+                    if max_acc<0:
+                        min_acc = copy.deepcopy(max_acc)
+                        max_acc = 0
+                    elif min_acc>0:
+                        min_acc = 0
+
+                    print("min_acc:", min_acc, ", max_acc:", max_acc)
+
+                    # calcule maintenant la meilleure accélération pour passer par les deux segments
+                    init_error = self.nrn_tls.check_curve_geometry(new_curve["starting_point"], new_curve["basis_vector"], new_curve["angle"], new_curve["acc"], new_curve["nb_iteration"], pixel_points)
+                    # print("***")
+                    # print("init_error:", init_error)
+                    # print("sum init_error:", np.sum(init_error))
+                    # print("paramètres initiaux:", new_curve["basis_vector"], new_curve["angle"], new_curve["acc"])
+                    # print("***")
+                    # print(" --> On recherche la meilleure accélération pour passer par les deux segments:")
+                    # calcule maintenant la meilleure accélération pour passer par les deux segments
+                    new_acc_1 = self.search_best_acc(new_curve, pixel_points, min_acc, max_acc)
+                    # print("new acc 1 found", new_acc_1)
+                    error_1 = self.nrn_tls.check_curve_geometry(new_curve["starting_point"], new_curve["basis_vector"], new_curve["angle"], new_acc_1, new_curve["nb_iteration"], pixel_points)
+                    # print("***")
+                    # print("error_1:", error_1)
+                    # print("sum error_1:", np.sum(error_1))
+                    # print("paramètres finaux:", new_curve["basis_vector"], new_curve["angle"], new_acc_1)
+                    # print("***")
+
+                    # print(" --> On recherche le meilleur basis vector et le meilleur angle pour passer par les deux segments:")
+                    # basis vector
+                    new_basis_vector = copy.deepcopy(nrn_line["meta"]["line"]["basis_vector"])
+                    # on normalise le basis vector
+                    k = np.sqrt(np.power(new_basis_vector["x"],2)+np.power(new_basis_vector["y"], 2))
+                    new_basis_vector["x"]= new_basis_vector["x"]/k
+                    new_basis_vector["y"]= new_basis_vector["y"]/k
+
+                    # angle
+                    alt_curve = copy.deepcopy(new_curve)
+                    alt_curve["basis_vector"] = new_basis_vector
+                    new_angle_2 = self.search_best_angle(alt_curve, pixel_points)        
+                    # print("new angle 2 found", new_angle_2)
+                    error_angle = self.nrn_tls.check_curve_geometry(new_curve["starting_point"], new_basis_vector, new_angle_2, new_acc_1, new_curve["nb_iteration"], pixel_points)
+                    # print("***")
+                    # print("error_angle:", error_angle)
+                    # print("sum error_angle:", np.sum(error_angle))
+                    # print("paramètres finaux:", new_basis_vector, new_angle_2, new_acc_1)
+                    # print("***")
+                    
+                    alt_curve["basis_vector"] = new_basis_vector
+                    alt_curve["angle"] = new_angle_2
+                    alt_curve["acc"] = new_acc_1
+
+                    # print(" --> On recherche la meilleure accélération pour passer par les deux segments:")
+                    # calcule maintenant la meilleure accélération pour passer par les deux segments
+                    
+                    new_acc_2 = self.search_best_acc(alt_curve, pixel_points, min_acc, max_acc)
+
+                    # print("new acc 2 found", new_acc_2)
+                    error_2 = self.nrn_tls.check_curve_geometry(new_curve["starting_point"], new_basis_vector, new_angle_2, new_acc_2, new_curve["nb_iteration"], pixel_points)
+                    # print("***")
+                    # print("error_2 :", error_2)
+                    # print("sum error_2:", np.sum(error_2))
+                    # print("paramètres finaux:", new_basis_vector, new_angle_2, new_acc_2)
+                    # print("***")
+
+                    # on compare les deux erreurs
+                    error_1 = np.sum(error_1)
+                    error_2 = np.sum(error_2)
+                    if error_1<error_2 - 0.05*error_2:
+                        # print(" --> On garde les paramètres initiaux")
+                        new_curve["acc"] = new_acc_1
+                        # print("new_curve:", new_curve)
+                        final_error = error_1
+                    else:
+                        # print(" --> On garde les paramètres finaux")
+                        new_curve["angle"] = new_angle_2
+                        new_curve["acc"] = new_acc_2
+                        new_curve["basis_vector"] = new_basis_vector
+                        # print("new_curve:", new_curve)
+                        final_error = error_2
+                    
+                    #    ___        _            _ 
+                    #   | __|  _ __(_)___ _ _   / |
+                    #   | _| || (_-< / _ \ ' \  | |
+                    #   |_| \_,_/__/_\___/_||_| |_|
+                    #                              
+                    ## FUSION : on met à jour le neurone courbe
+                    if (final_error/new_curve["nb_iteration"])<1:
+                        nrn["meta"]["curve"]["starting_point"] = copy.deepcopy(new_curve["starting_point"])
+                        nrn["meta"]["curve"]["basis_vector"] = copy.deepcopy(new_curve["basis_vector"])
+                        nrn["meta"]["curve"]["angle"] = copy.deepcopy(new_curve["angle"])
+                        nrn["meta"]["curve"]["acceleration"] = copy.deepcopy(new_curve["acc"])
+                        nrn["meta"]["curve"]["nb_iteration"] = copy.deepcopy(new_curve["nb_iteration"])
+                        # on modifie la connexion latérale
+                        nrn["DbConnectivity"]["lateral_connexion"] = copy.deepcopy(nrn_suivant["DbConnectivity"]["lateral_connexion"])
+                        # on modifie le last position
+                        nrn["meta"]["curve"]["last_position"] = copy.deepcopy(nrn_suivant["meta"]["curve"]["last_position"])
+                        # on cache le neurone suivant
+                        nrn_suivant["type"] = "sentive_vision_hidden_apoptosis"
+                        if len(nrn_suivant["DbConnectivity"]["anti_post_synaptique"])>0:
+                            # on ajoute la connexion vers le neurone ligne associé à nrn_suivant dans anti_post_synaptique
+                            nrn["DbConnectivity"]["anti_post_synaptique"].extend(nrn_suivant["DbConnectivity"]["anti_post_synaptique"])
+                            # on modifie la connexion vers le neurone ligne associé à nrn_suivant 
+                            nrn_ligne_suivant = self.nrn_tls.get_neuron_from_id(nrn_suivant["DbConnectivity"]["anti_post_synaptique"][0])
+                            nrn_ligne_suivant["DbConnectivity"]["post_synaptique"] = [nrn["_id"]]
+                        # on lui ajoute les nrn pixels de nrn_suivant
+                        nrn["DbConnectivity"]["pre_synaptique"].extend(nrn_suivant["DbConnectivity"]["pre_synaptique"])
+
+                        # boucle pour fusionner les neurones latéraux suivants
+                        list_next_nrn = copy.deepcopy(nrn["DbConnectivity"]["lateral_connexion"])
+
+                        while len(list_next_nrn)>0:
+                            next_nrn_id = list_next_nrn[0]
+                            list_next_nrn.pop(0)
+                            next_nrn = self.nrn_tls.get_neuron_from_id(next_nrn_id)
+
+                            # on vérifie que le neurone est bien un neurone courbe
+                            if next_nrn["type"] == "sentive_vision_curve":
+                                # on vérifie la distance entre les deux
+                                distance = self.nrn_tls.calc_dist(nrn["meta"]["curve"]["last_position"],next_nrn["meta"]["curve"]["starting_point"])
+                                if distance<2:
+                                    # Je teste la géométrie pour voir l'erreur directement sans aucun changement
+                                    # Je sauvegarde pixel_points
+                                    saved_pixel_points = copy.deepcopy(pixel_points)
+                                    # Je dois ajouter les pixels de next_nrn à pixel_points
+                                    tmp_pixel_points = self.nrn_tls.get_list_pixels_coord(next_nrn["_id"])
+                                    pixel_points = np.concatenate((pixel_points, tmp_pixel_points), axis=0)
+                                    tmp_nb_iteration = nrn["meta"]["curve"]["nb_iteration"] + next_nrn["meta"]["curve"]["nb_iteration"]
+                                    error_directe = self.nrn_tls.check_curve_geometry(nrn["meta"]["curve"]["starting_point"], nrn["meta"]["curve"]["basis_vector"], nrn["meta"]["curve"]["angle"], nrn["meta"]["curve"]["acceleration"], tmp_nb_iteration, pixel_points)
+                                    # print("error_directe :", error_directe)
+                                    # print("sum error_directe:", np.sum(error_directe))
+                                    # Je cherche à optimiser l'accélération
+                                    min_acc = (next_nrn["meta"]["curve"]["angle"]-nrn["meta"]["curve"]["angle"])/tmp_nb_iteration
+                                    max_acc = next_nrn["meta"]["curve"]["angle"]-nrn["meta"]["curve"]["angle"]
+                                    if max_acc<0:
+                                        min_acc = copy.deepcopy(max_acc)
+                                        max_acc = 0
+                                    elif min_acc>0:
+                                        min_acc = 0
+                                    # print("min_acc:", min_acc, ", max_acc:", max_acc)
+                                    alt_curve = {}
+                                    alt_curve["starting_point"] = copy.deepcopy(nrn["meta"]["curve"]["starting_point"])
+                                    alt_curve["basis_vector"] = copy.deepcopy(nrn["meta"]["curve"]["basis_vector"])
+                                    alt_curve["angle"] = copy.deepcopy(nrn["meta"]["curve"]["angle"])
+                                    alt_curve["acc"] = copy.deepcopy(nrn["meta"]["curve"]["acceleration"])
+                                    alt_curve["nb_iteration"] = tmp_nb_iteration
+                                    new_acc = self.search_best_acc(alt_curve, pixel_points, min_acc, max_acc)
+                                    # print("new acc found", new_acc)
+                                    error_optimisee = self.nrn_tls.check_curve_geometry(nrn["meta"]["curve"]["starting_point"], nrn["meta"]["curve"]["basis_vector"], nrn["meta"]["curve"]["angle"], new_acc, tmp_nb_iteration, pixel_points)
+                                    # print("error_optimisee :", error_optimisee)
+                                    # print("sum error_optimisee:", np.sum(error_optimisee))
+                                    # on compare les deux erreurs
+                                    error_directe = np.sum(error_directe)
+                                    error_optimisee = np.sum(error_optimisee)
+                                    if error_directe<error_optimisee:
+                                        # print(" --> On garde les paramètres initiaux")
+                                        # print("nrn:", nrn)
+                                        tmp_acc = nrn["meta"]["curve"]["acceleration"]
+                                        final_error = error_directe
+                                    else:
+                                        # print(" --> On prend la nouvelle accélération")
+                                        tmp_acc = copy.deepcopy(new_acc)
+                                        final_error = error_optimisee
+                                    # si l'erreur est faible on fusionne les deux neurones
+                                    #
+                                    #  [`   _.  ,_  ')
+                                    #  | L|_\|()||  /_]
+                                    #                 
+                                    if (final_error/tmp_nb_iteration)<1:
+                                        # on modifie le last position
+                                        nrn["meta"]["curve"]["last_position"] = copy.deepcopy(next_nrn["meta"]["curve"]["last_position"])
+                                        # on cache le neurone suivant
+                                        next_nrn["type"] = "sentive_vision_hidden_apoptosis"
+                                        # on change les neurones latéraux suivants de nrn
+                                        nrn["DbConnectivity"]["lateral_connexion"] = copy.deepcopy(next_nrn["DbConnectivity"]["lateral_connexion"])
+                                        # on modifie le nombre d'itérations de nrn
+                                        nrn["meta"]["curve"]["nb_iteration"] = tmp_nb_iteration
+                                        # on modifie l'accélération de nrn
+                                        nrn["meta"]["curve"]["acceleration"] = tmp_acc
+                                        # on lui ajoute les nrn pixels de next_nrn
+                                        nrn["DbConnectivity"]["pre_synaptique"].extend(next_nrn["DbConnectivity"]["pre_synaptique"])
+                                        # on met à jour la liste des neurones latéraux suivants pour continuer la boucle
+                                        list_next_nrn = next_nrn["DbConnectivity"]["lateral_connexion"]
+                                        # on reconnecte son neurone ligne
+                                        if len(next_nrn["DbConnectivity"]["anti_post_synaptique"])>0:
+                                            # on ajoute la connexion vers le neurone ligne associé à next_nrn dans anti_post_synaptique
+                                            nrn["DbConnectivity"]["anti_post_synaptique"].extend(next_nrn["DbConnectivity"]["anti_post_synaptique"])
+                                            # on modifie la connexion vers le neurone ligne associé à next_nrn 
+                                            nrn_ligne_suivant = sbrain.nnet[char_id].nrn_tls.get_neuron_from_id(next_nrn["DbConnectivity"]["anti_post_synaptique"][0])
+                                            nrn_ligne_suivant["DbConnectivity"]["post_synaptique"] = [nrn["_id"]]
+                                    # sinon
+                                    else:
+                                        # je ne fusionne pas les neurones mais je garde la connexion latérale
+                                        # Je met à jour sa connexion anti-latérale pour bien pointer vers le 1er neurone courbe
+                                        next_nrn["DbConnectivity"]["anti_lateral"] = [nrn["_id"]]
+                                else:
+                                    # print("Warning : distance trop grande entre les deux neurones")
+                                    # Je supprime la connexion latérale
+                                    nrn["DbConnectivity"]["lateral_connexion"] = []
+                                    # Ainsi que la suppression de la connexion anti-latérale du neurone suivant
+                                    next_nrn["DbConnectivity"]["anti_lateral"] = []
+                    else:
+                        # mettre à jour les variables nrn, nrn_line et nrn_suivant puis continuer la boucle
+                        if len(lst_nrn_line)>0:
+                            # tu récupères le premier neurone ligne
+                            nrn_line = lst_nrn_line.pop(0)
+                            nrn_line = nrn_line.neuron
+                            nrn_ligne_ok = True
+                            # print("2! nouveau nrn_line:", nrn_line["_id"])
+                        else:
+                            nrn_ligne_ok = False
+                else:
+                    # print("Warning : distance trop grande entre les deux neurones")
+                    # Je supprime la connexion latérale
+                    nrn["DbConnectivity"]["lateral_connexion"] = []
+            else:
+                # print("Warning : pas de connexion latérale")
+                if len(lst_nrn_line)>0:
+                    # tu récupères le premier neurone ligne
+                    nrn_line = lst_nrn_line.pop(0)
+                    nrn_line = nrn_line.neuron
+                    nrn_ligne_ok = True
+                    # print("3! nouveau nrn_line:", nrn_line["_id"])
+                else:
+                    nrn_ligne_ok = False
+                
+    
+    
     def get_single_line_activation(self, nrn3_to_compare, nrn3_line_id):
         nrn3 = self.nrn_tls.get_neuron_from_id(nrn3_line_id)
 
@@ -1207,7 +1589,6 @@ class sentive_vision_network(object):
         return set(lst_output)
 
 
-
     def new_angle_neuron(self, nrn2_1_id, nrn2_2_id, nrn2_3_id):
         # crée un nouveau neurone
         nb = self.nrn_tls.add_new_nrn("sentive_angle_neuron")
@@ -1234,6 +1615,7 @@ class sentive_vision_network(object):
     def run_layers(self):
         self.layer_1() # pixels
         self.layer_2() # triplets
+        self.pruning_phase() # élagage des neurones surnuméraires
 
         # self.show_layer_vectors(3, False)
         # self.calc_angles_layer_3()
@@ -1358,6 +1740,7 @@ class sentive_vision_network(object):
                 break
             i+=1
         ax.matshow(np_stamp)
+
 
     def show_layer_vectors(self, layer_id, lbl_show_angles=True):
         X = []
@@ -1559,6 +1942,7 @@ class sentive_vision_network(object):
                     self.x_dist.pop(i)
                     self.ids_3.pop(i)
     
+
     def plot_angles_3(self):
         _, ax = plt.subplots()
         ax.plot(self.x_dist,self.angles_3)
