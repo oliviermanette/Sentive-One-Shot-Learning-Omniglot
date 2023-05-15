@@ -78,20 +78,6 @@ class sentive_vision_network(object):
         self.slct_sgmts = []
         self.nrn_saccade = []
 
-        self.curve_prototype = {
-			"starting_point" : {
-				"x" : 0.0,
-				"y" : 0.0
-			},
-			"basis_vector" : {
-				"x" : 0.0,
-				"y" : 0.0
-			},
-			"nb_iteration" : 0,
-			"rotation_angle" : 0.0,
-			"acceleration_step" : 0.0
-		}
-
 
     def layer_1(self):
         ##################################################
@@ -1011,26 +997,6 @@ class sentive_vision_network(object):
                 print("POSITION choisie:", new_x, new_y)
                 print("°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°")
 
-        #                          _                 _             _          _    _             
-        #    ____  _ _ __ _ __ _ _(_)_ __  ___ _ _  | |___ ___  __| |___ _  _| |__| |___ _ _  ___
-        #   (_-< || | '_ \ '_ \ '_| | '  \/ -_) '_| | / -_|_-< / _` / _ \ || | '_ \ / _ \ ' \(_-<
-        #   /__/\_,_| .__/ .__/_| |_|_|_|_\___|_|   |_\___/__/ \__,_\___/\_,_|_.__/_\___/_||_/__/
-        #           |_|  |_|                                                                     
-        # Faire une boucle sur tous les neurones curve et line pour supprimer les doublons
-        # on défini un doublon par un neurone ayant le même starting_point
-        # on supprime le doublon ayant le moins d'itérations
-        # for coupled_nrn3 in list_coupled_nrn3s:
-        #     nrn3_1 = self.nrn_tls.get_neuron_from_id(coupled_nrn3[0])
-        #     nrn3_2 = self.nrn_tls.get_neuron_from_id(coupled_nrn3[1])
-        #     if nrn3_1["meta"]["curve"]["nb_iteration"] >= nrn3_2["meta"]["line"]["nb_iteration"]:
-        #         nrn3_to_remove = nrn3_2
-        #     else:
-        #         nrn3_to_remove = nrn3_1
-        #     print("nrn3_to_remove", nrn3_to_remove["_id"])
-        #     print("nrn3_to_remove", nrn3_to_remove)
-
-        #     # on supprime le doublon
-        #     self.nrn_tls.remove_nrn_by_id(nrn3_to_remove["_id"])
 
 
     def test_pos_predict_on_3x3_grid(self, nrn2, nrn3_pos_predict):
@@ -1196,6 +1162,7 @@ class sentive_vision_network(object):
         # plt.show()
         return split_angle
     
+
     def pruning_phase(self):
         # tu te fais 2 petites listes une pour les nrn courbes et une pour les nrn lignes
         lst_nrn_curve = []
@@ -1479,8 +1446,7 @@ class sentive_vision_network(object):
                     nrn_ligne_ok = True
                     # print("3! nouveau nrn_line:", nrn_line["_id"])
                 else:
-                    nrn_ligne_ok = False
-                
+                    nrn_ligne_ok = False       
     
     
     def get_single_line_activation(self, nrn3_to_compare, nrn3_line_id):
@@ -1573,6 +1539,8 @@ class sentive_vision_network(object):
         return 0.76 * score + 0.12 * score_length + 0.12 * score_orientation
 
 
+    def activate_with_input(self, input_network_to_compare):
+        return -42
 
     
     def get_nrn_from_path(self, list_path_nrn_id):
