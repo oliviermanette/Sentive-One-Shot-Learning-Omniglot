@@ -353,7 +353,7 @@ class sentive_neuron_helper():
         for neuron_idx in range(len(neurons_pool)):
             if neurons_pool[neuron_idx].neuron[str_id]==neuron_idx2:
                 return neurons_pool[neuron_idx].neuron
-        return ''
+        return {"_id":None}
 
 
     def get_segment_from_id(self, neuron_idx2, neurons_pool=-1, str_id="_id"):

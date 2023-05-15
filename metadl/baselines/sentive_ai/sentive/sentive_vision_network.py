@@ -119,7 +119,6 @@ class sentive_vision_network(object):
         self.np_coord = np.array(pxl_coord)
         self.glbl_prm["cg"]["x"] = np.mean(self.np_coord[:,0])
         self.glbl_prm["cg"]["y"] = np.mean(self.np_coord[:,1])
-        # print(self.glbl_prm)
 
     
     def layer_2(self):
@@ -1309,12 +1308,13 @@ class sentive_vision_network(object):
                     #   |_| \_,_/__/_\___/_||_| |_|
                     #                              
                     ## FUSION : on met à jour le neurone courbe
-                    if (final_error/new_curve["nb_iteration"])<1:
+                    if (final_error/new_curve["nb_iteration"])<1.05:
                         nrn["meta"]["curve"]["starting_point"] = copy.deepcopy(new_curve["starting_point"])
                         nrn["meta"]["curve"]["basis_vector"] = copy.deepcopy(new_curve["basis_vector"])
                         nrn["meta"]["curve"]["angle"] = copy.deepcopy(new_curve["angle"])
                         nrn["meta"]["curve"]["acceleration"] = copy.deepcopy(new_curve["acc"])
                         nrn["meta"]["curve"]["nb_iteration"] = copy.deepcopy(new_curve["nb_iteration"])
+                        nrn["meta"]["curve"]["pixels_matrix"] = copy.deepcopy(pixel_points)
                         # on modifie la connexion latérale
                         nrn["DbConnectivity"]["lateral_connexion"] = copy.deepcopy(nrn_suivant["DbConnectivity"]["lateral_connexion"])
                         # on modifie le last position
@@ -1344,8 +1344,6 @@ class sentive_vision_network(object):
                                 distance = self.nrn_tls.calc_dist(nrn["meta"]["curve"]["last_position"],next_nrn["meta"]["curve"]["starting_point"])
                                 if distance<2:
                                     # Je teste la géométrie pour voir l'erreur directement sans aucun changement
-                                    # Je sauvegarde pixel_points
-                                    saved_pixel_points = copy.deepcopy(pixel_points)
                                     # Je dois ajouter les pixels de next_nrn à pixel_points
                                     tmp_pixel_points = self.nrn_tls.get_list_pixels_coord(next_nrn["_id"])
                                     pixel_points = np.concatenate((pixel_points, tmp_pixel_points), axis=0)
@@ -1390,7 +1388,7 @@ class sentive_vision_network(object):
                                     #  [`   _.  ,_  ')
                                     #  | L|_\|()||  /_]
                                     #                 
-                                    if (final_error/tmp_nb_iteration)<1:
+                                    if (final_error/tmp_nb_iteration)<1.05:
                                         # on modifie le last position
                                         nrn["meta"]["curve"]["last_position"] = copy.deepcopy(next_nrn["meta"]["curve"]["last_position"])
                                         # on cache le neurone suivant
@@ -1401,6 +1399,8 @@ class sentive_vision_network(object):
                                         nrn["meta"]["curve"]["nb_iteration"] = tmp_nb_iteration
                                         # on modifie l'accélération de nrn
                                         nrn["meta"]["curve"]["acceleration"] = tmp_acc
+
+                                        nrn["meta"]["curve"]["pixels_matrix"] = copy.deepcopy(pixel_points)
                                         # on lui ajoute les nrn pixels de next_nrn
                                         nrn["DbConnectivity"]["pre_synaptique"].extend(next_nrn["DbConnectivity"]["pre_synaptique"])
                                         # on met à jour la liste des neurones latéraux suivants pour continuer la boucle
@@ -1410,7 +1410,7 @@ class sentive_vision_network(object):
                                             # on ajoute la connexion vers le neurone ligne associé à next_nrn dans anti_post_synaptique
                                             nrn["DbConnectivity"]["anti_post_synaptique"].extend(next_nrn["DbConnectivity"]["anti_post_synaptique"])
                                             # on modifie la connexion vers le neurone ligne associé à next_nrn 
-                                            nrn_ligne_suivant = sbrain.nnet[char_id].nrn_tls.get_neuron_from_id(next_nrn["DbConnectivity"]["anti_post_synaptique"][0])
+                                            nrn_ligne_suivant = self.nrn_tls.get_neuron_from_id(next_nrn["DbConnectivity"]["anti_post_synaptique"][0])
                                             nrn_ligne_suivant["DbConnectivity"]["post_synaptique"] = [nrn["_id"]]
                                     # sinon
                                     else:
@@ -1455,9 +1455,9 @@ class sentive_vision_network(object):
         # Vérifie que le nrn3 existe bien sinon quitte et retourne 0
         try:
             if nrn3_line_id != nrn3["_id"]:
-                return 0
+                return -42
         except:
-            return 0
+            return -42
         
         # calculer l'angle entre les 2 basis_vector
         angle = self.nrn_tls.calc_angle(nrn3["meta"]["line"]["basis_vector"], nrn3_to_compare["meta"]["line"]["basis_vector"])
@@ -1511,7 +1511,11 @@ class sentive_vision_network(object):
     
 
     def get_single_curve_activation(self, nrn3_to_compare, nrn3_curve_id):
-        nrn3 = self.nrn_tls.get_neuron_from_id(nrn3_curve_id)
+        try:
+            _ = nrn3_curve_id["_id"]
+            nrn3 = nrn3_curve_id
+        except:
+            nrn3 = self.nrn_tls.get_neuron_from_id(nrn3_curve_id)
 
         # Vérifie que le nrn3 existe bien sinon quitte et retourne 0
         try:
@@ -1539,46 +1543,44 @@ class sentive_vision_network(object):
         return 0.76 * score + 0.12 * score_length + 0.12 * score_orientation
 
 
+    def get_curve_nrn_list(self):
+        lst_nrn_curve = []
+        total_length = 0
+        for nrn in self.nrn_tls.lst_nrns:
+            if nrn.neuron["type"] == "sentive_vision_curve":
+                lst_nrn_curve.append(nrn)
+                total_length += nrn.neuron["meta"]["curve"]["nb_iteration"]
+        return lst_nrn_curve, total_length
+    
+
+    def get_line_nrn_list(self):
+        lst_nrn_line = []
+        total_length = 0
+        for nrn in self.nrn_tls.lst_nrns:
+            if nrn.neuron["type"] == "sentive_vision_line":
+                lst_nrn_line.append(nrn)
+                total_length += nrn.neuron["meta"]["line"]["nb_iteration"]
+        return lst_nrn_line, total_length
+
+
     def activate_with_input(self, input_network_to_compare):
-        return -42
+        """Active le réseau avec l'input passé en paramètre
 
-    
-    def get_nrn_from_path(self, list_path_nrn_id):
-        """A partir de la liste des neurones passés en paramètre,
-            retourne l'ensemble des connexions latérales mobilisés
         Args:
-            list_path_nrn_id (list): nrn_id
+            input_network_to_compare (sentive_vision_network): permet de récupérer le modèle de réseau de neurones à comparer
+
+        Returns:
+            float: probabilité que les 2 réseaux soient identiques
         """
-        lst_output = []
-        for nrn2_id in list_path_nrn_id:
-            nrn2 = self.nrn_tls.get_neuron_from_id(nrn2_id)
-            lst_output.extend(nrn2["DbConnectivity"]["lateral_connexion"])
-        
-        return set(lst_output)
+        lst_local_curve_nrns = self.get_curve_nrn_list()
+        lst_input_curve_nrns = input_network_to_compare.get_curve_nrn_list()
+        tmp_results = []
+        for input_curve_nrn in lst_input_curve_nrns:
+            for local_curve_nrn in lst_local_curve_nrns:
+                tmp_results.append(self.get_single_curve_activation( input_curve_nrn, local_curve_nrn))
 
+        return tmp_results
 
-    def new_angle_neuron(self, nrn2_1_id, nrn2_2_id, nrn2_3_id):
-        # crée un nouveau neurone
-        nb = self.nrn_tls.add_new_nrn("sentive_angle_neuron")
-        nrn4 = self.nrn_tls.lst_nrns[nb].neuron
-        nrn2_1 = self.nrn_tls.get_neuron_from_id(nrn2_1_id)
-        nrn2_2 = self.nrn_tls.get_neuron_from_id(nrn2_2_id)
-        nrn2_3 = self.nrn_tls.get_neuron_from_id(nrn2_3_id)
-        self.nrn_tls.add_nrn_connexion(nrn4, nrn2_1)
-        self.nrn_tls.add_nrn_connexion(nrn4, nrn2_2)
-        self.nrn_tls.add_nrn_connexion(nrn4, nrn2_3)
-        nrn4["meta"]["orientation"]["x"] = nrn2_3["meta"]["center"]["x"]-nrn2_1["meta"]["center"]["x"]
-        nrn4["meta"]["orientation"]["y"] = nrn2_3["meta"]["center"]["y"]-nrn2_1["meta"]["center"]["y"]
-        v1 = {"x":0,"y":0}
-        v1["x"] = nrn2_2["meta"]["center"]["x"]-nrn2_1["meta"]["center"]["x"]
-        v1["y"] = nrn2_2["meta"]["center"]["y"]-nrn2_1["meta"]["center"]["y"]
-        v2 = {"x":0,"y":0}
-        v2["x"] = nrn2_3["meta"]["center"]["x"]-nrn2_2["meta"]["center"]["x"]
-        v2["y"] = nrn2_3["meta"]["center"]["y"]-nrn2_2["meta"]["center"]["y"]
-        nrn4["meta"]["angle"] = self.nrn_tls.calc_angle(v1,v2)
-        nrn4["meta"]["before_length"] = self.nrn_tls.calc_dist(nrn2_1["meta"]["center"], nrn2_2["meta"]["center"])
-        nrn4["meta"]["after_length"] = self.nrn_tls.calc_dist(nrn2_3["meta"]["center"], nrn2_2["meta"]["center"])
-    
 
     def run_layers(self):
         self.layer_1() # pixels

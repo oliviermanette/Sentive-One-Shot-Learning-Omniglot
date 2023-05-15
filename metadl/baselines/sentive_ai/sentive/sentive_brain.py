@@ -24,4 +24,3 @@ class sentive_brain():
             full_results.append(self.nnet[lnet].activate_with_input(self.test_net))
 
         return full_results
-

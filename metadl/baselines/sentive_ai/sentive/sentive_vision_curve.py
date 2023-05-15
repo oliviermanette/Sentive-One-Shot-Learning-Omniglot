@@ -43,8 +43,8 @@ class sentive_vision_curve(object):
                     "angle" : 0.0,
                     "acceleration" : 0.0,
                     "malm_angle" : 0.0,
-                    "malm_acceleration" : 0.0
+                    "malm_acceleration" : 0.0,
+                    "pixels_matrix": []
                 },
-                "pixels_matrix": []
             }
         }
