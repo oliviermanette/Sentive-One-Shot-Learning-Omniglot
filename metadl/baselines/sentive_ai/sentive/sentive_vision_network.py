@@ -1460,9 +1460,15 @@ class sentive_vision_network(object):
             return -42
         
         # calculer l'angle entre les 2 basis_vector
-        angle = self.nrn_tls.calc_angle(nrn3["meta"]["line"]["basis_vector"], nrn3_to_compare["meta"]["line"]["basis_vector"])
+        angle = np.abs(self.nrn_tls.calc_angle(nrn3["meta"]["line"]["basis_vector"], nrn3_to_compare["meta"]["line"]["basis_vector"]))
+        # print("angle", angle)
+
         # calculer le score 
-        score = np.abs(1-angle*2/np.pi)
+        if angle > np.pi/2:
+            score = 0
+        else:
+            score = 1-2*angle/np.pi
+        # print("score", score)
 
         # comparer les longueurs des 2 nrn3 ligne
         # calculer la longueur du nrn3_to_compare
@@ -1470,12 +1476,15 @@ class sentive_vision_network(object):
         length_nrn3 = np.sqrt(np.power((nrn3["meta"]["line"]["starting_point"]["x"] - nrn3["meta"]["line"]["last_position"]["x"]),2)+np.power((nrn3["meta"]["line"]["starting_point"]["y"] - nrn3["meta"]["line"]["last_position"]["y"]),2))
 
         ratio_length = length_nrn3_to_compare / length_nrn3
-
+        # print("ratio_length", ratio_length)
         score_length = self.activation_double_max(ratio_length)
+        # print("score_length", score_length)
 
         # Comparer le nombre d'itérations des 2 nrn3 ligne
         ratio_nb = nrn3_to_compare["meta"]["line"]["nb_iteration"]/nrn3["meta"]["line"]["nb_iteration"]
+        # print("ratio_nb", ratio_nb)
         score_nb = self.activation_double_max(ratio_nb)
+        # print("score_nb", score_nb)
 
         # calculer le score final
         return 0.76 * score + 0.12 * score_length + score_nb * 0.12
@@ -1510,37 +1519,69 @@ class sentive_vision_network(object):
         return score_length
     
 
-    def get_single_curve_activation(self, nrn3_to_compare, nrn3_curve_id):
+    def get_single_curve_activation(self, nrn3_to_compare, nrn3_curve_id, propagated_value, nrn3_total_length=1, compared_total_length=1):
         try:
-            _ = nrn3_curve_id["_id"]
-            nrn3 = nrn3_curve_id
+            _ = nrn3_curve_id.neuron["_id"]
+            nrn3 = nrn3_curve_id.neuron
         except:
             nrn3 = self.nrn_tls.get_neuron_from_id(nrn3_curve_id)
 
-        # Vérifie que le nrn3 existe bien sinon quitte et retourne 0
-        try:
-            if nrn3_curve_id != nrn3["_id"]:
-                return 0
-        except:
-            return 0
+        # print("nrn3",nrn3)
+        nrn3_to_compare = nrn3_to_compare.neuron
+        # print("nrn3_to_compare",nrn3_to_compare)
         
         # calculer l'écart entre les 2 angles
-        ecart_angle = np.abs(nrn3_to_compare["meta"]["curve"]["angle"] - nrn3["meta"]["curve"]["angle"])
+        ecart_angle = np.power(nrn3_to_compare["meta"]["curve"]["angle"] - nrn3["meta"]["curve"]["angle"], 2)
+        ecart_acceleration = np.power(nrn3_to_compare["meta"]["curve"]["acceleration"] - nrn3["meta"]["curve"]["acceleration"], 2)
+        distance = np.sqrt(ecart_angle + ecart_acceleration*200)
+        score_angle = -0.6 * distance + 1
+        if score_angle < 0:
+            score_angle = 0
+        # print("distance",distance, "(score angle", score_angle,")")
+        # ecart_angle = np.sqrt(ecart_angle)
         # calculer le score
-        if ecart_angle > np.pi/4:
-            score = 0
-        else:
-            score = np.abs(1-ecart_angle*4/np.pi)
+        # if ecart_angle > np.pi/4:
+        #     score_angle = 0
+        # else:
+        #     score_angle = np.abs(1-ecart_angle*4/np.pi)
 
         # comparer les longueurs des 2 nrn3 courbe
-        ratio_lenth = nrn3_to_compare["meta"]["curve"]["nb_iteration"]/nrn3["meta"]["curve"]["nb_iteration"]
-        score_length = self.activation_double_max(ratio_lenth)
+        ecart_ratio_length = np.abs((nrn3_to_compare["meta"]["curve"]["nb_iteration"]/compared_total_length)-(nrn3["meta"]["curve"]["nb_iteration"]/nrn3_total_length))
+        if ecart_ratio_length > 0.5:
+            score_length = 0
+        else:
+            score_length = 1 - 2 * ecart_ratio_length
+        # print("score length:", score_length, "(ecart_ratio_length", ecart_ratio_length, ")")
 
         # comparer les orientations des basis vector 
         angle = self.nrn_tls.calc_angle(nrn3["meta"]["curve"]["basis_vector"], nrn3_to_compare["meta"]["curve"]["basis_vector"])
-        score_orientation = np.abs(1-angle*2/np.pi) 
+        score_basis_vector = np.abs(1-angle*2/np.pi) 
 
-        return 0.76 * score + 0.12 * score_length + 0.12 * score_orientation
+        # calculer la distance entre les deux cg
+        # print("input_curve_nrn", nrn3_to_compare["_id"], "local_curve_nrn", nrn3["_id"])
+        # print("input_curve_nrn", nrn3_to_compare["meta"]["curve"]["offset_cg"], "local_curve_nrn", nrn3["meta"]["curve"]["offset_cg"])
+        distance_cg = np.sqrt(np.power(nrn3_to_compare["meta"]["curve"]["offset_cg"]["x"]-nrn3["meta"]["curve"]["offset_cg"]["x"],2)+np.power(nrn3_to_compare["meta"]["curve"]["offset_cg"]["y"]-nrn3["meta"]["curve"]["offset_cg"]["y"],2))
+        if distance_cg > 15:
+            score_cg = 0
+        else:
+            score_cg = 1 - distance_cg/15
+        # print("distance_cg", distance_cg , "(score_cg", score_cg, ")")
+        
+        score = 0.25 * score_angle + 0.25 * score_length + 0.25 * score_basis_vector + 0.25 * score_cg
+        if len(nrn3["DbConnectivity"]["anti_lateral"])> 0:
+            score = 0.75 * score + 0.25 * propagated_value
+
+        return score
+
+
+    def get_lateral_nb_previous_nrns(lst_curve_nrns):
+        lst_output = []
+        for i, nrn in enumerate(lst_curve_nrns):
+            if len(nrn.neuron["DbConnectivity"]["anti_lateral"])> 0:
+                lst_output.append(1+lst_output[i-1])
+            else:
+                lst_output.append(0)
+        return lst_output
 
 
     def get_curve_nrn_list(self):
