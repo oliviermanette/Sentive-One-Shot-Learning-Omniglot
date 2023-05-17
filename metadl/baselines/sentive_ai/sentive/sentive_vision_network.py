@@ -1574,7 +1574,7 @@ class sentive_vision_network(object):
         return score
 
 
-    def get_lateral_nb_previous_nrns(lst_curve_nrns):
+    def get_lateral_nb_previous_nrns(self, lst_curve_nrns):
         lst_output = []
         for i, nrn in enumerate(lst_curve_nrns):
             if len(nrn.neuron["DbConnectivity"]["anti_lateral"])> 0:

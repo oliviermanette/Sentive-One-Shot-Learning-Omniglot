@@ -20,7 +20,7 @@ class sentive_brain():
         full_results = []
         for lnet in range(self.nb_char):
             # pour chaque caractère je fais une boucle sur chaque binome
-            full_results.append(self.nnet[lnet].activate_with_input(self.test_net))
+            # full_results.append(self.nnet[lnet].activate_with_input(self.test_net))
 
             # return full_results
             lst_local_curve_nrns, local_curve_total_length = self.nnet[lnet].get_curve_nrn_list()
@@ -85,7 +85,7 @@ class sentive_brain():
                         for input_line_id in input_curve_nrn.neuron["DbConnectivity"]["anti_post_synaptique"]:
                             input_line_nrn = self.test_net.nrn_tls.get_neuron_from_id(input_line_id)
                             # tmp_line_results.append(get_single_line_activation(self, local_curve_nrn, input_curve_nrn.neuron["DbConnectivity"]["anti_post_synaptique"][0]))
-                            tmp_line_result = self.nnet[lnet].get_single_line_activation(self, input_line_nrn, local_line_id)
+                            tmp_line_result = self.nnet[lnet].get_single_line_activation(input_line_nrn, local_line_id)
                             if best_line_result < tmp_line_result:
                                 best_line_result = copy.deepcopy(tmp_line_result)
                     tmp_line_results.append(best_line_result)
@@ -103,7 +103,6 @@ class sentive_brain():
                 tmp_result_id = tmp_results[id_winner] * 0.5*((input_curve_nrn.neuron["meta"]["curve"]["nb_iteration"]/input_curve_total_length)+(lst_local_curve_nrns[id_winner].neuron["meta"]["curve"]["nb_iteration"]/local_curve_total_length))
                 if final_results[id_winner] < tmp_result_id:
                     final_results[id_winner] = tmp_result_id
-
 
                 # propagate the activity
                 bool_propagated_activity = False
